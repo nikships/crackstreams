@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select latest stable Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer || true
+      - name: Show toolchain
+        run: swift --version
+      - name: Run unit tests
+        run: swift test
+      - name: Build app bundle
+        run: bash Scripts/build-app.sh
+      - name: Validate scripts
+        run: bash -n build.sh Scripts/build-app.sh Scripts/release.sh

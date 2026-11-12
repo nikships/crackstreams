@@ -1,0 +1,12 @@
+.build/
+dist/
+.DS_Store
+*.xcuserstate
+*.png
+*.jpg
+!Assets/**/*.png
+.env
+*.keychain
+*.keychain-db
+*.p12
+*.p8
