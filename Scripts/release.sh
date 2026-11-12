@@ -61,5 +61,6 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 spctl --assess --verbose=4 --type execute "$APP"
 spctl --assess --verbose=4 --type open --context context:primary-signature "$DMG"
 xcrun stapler validate "$DMG"
-shasum -a 256 "$DMG" "$ZIP" > "$ROOT/dist/$NAME-SHA256SUMS.txt"
+# Bare file names let `shasum -c` run in the folder the artifacts were downloaded to.
+(cd "$ROOT/dist" && shasum -a 256 "$NAME.dmg" "$NAME.zip" > "$NAME-SHA256SUMS.txt")
 printf '\nRelease artifacts:\n%s\n%s\n' "$DMG" "$ZIP"
