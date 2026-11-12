@@ -25,6 +25,7 @@ final class StreamSlot: ObservableObject, Identifiable {
 
     private var loadTask: Task<Void, Never>?
     private var generation = UUID()
+    private var preferredTitle: String?
     private var statusObservation: NSKeyValueObservation?
     private var timeControlObservation: NSKeyValueObservation?
     private var notificationObservers: [NSObjectProtocol] = []
@@ -35,13 +36,14 @@ final class StreamSlot: ObservableObject, Identifiable {
 
     var isEmpty: Bool { state == .idle }
 
-    func load(_ url: URL) {
+    func load(_ url: URL, title preferredTitle: String? = nil) {
         loadTask?.cancel()
         stopPlayer()
         generation = UUID()
         let generation = self.generation
         sourceURL = url
-        title = Resolver.prettyTitle(from: url)
+        self.preferredTitle = preferredTitle
+        title = preferredTitle ?? Resolver.prettyTitle(from: url)
         state = .resolving
 
         loadTask = Task { [weak self] in
@@ -58,7 +60,7 @@ final class StreamSlot: ObservableObject, Identifiable {
                     player.isMuted = self.isMuted
                     player.automaticallyWaitsToMinimizeStalling = true
                     self.player = player
-                    self.title = resolved.title
+                    self.title = self.preferredTitle ?? resolved.title
                     self.isBuffering = true
                     self.state = .playing
                     self.observe(item: item, player: player, generation: generation)
@@ -77,7 +79,7 @@ final class StreamSlot: ObservableObject, Identifiable {
 
     func retry() {
         guard let sourceURL else { return }
-        load(sourceURL)
+        load(sourceURL, title: preferredTitle)
     }
 
     func stop() {
@@ -88,6 +90,7 @@ final class StreamSlot: ObservableObject, Identifiable {
         state = .idle
         title = "Empty slot"
         sourceURL = nil
+        preferredTitle = nil
     }
 
     private func observe(item: AVPlayerItem, player: AVPlayer, generation: UUID) {
@@ -180,7 +183,7 @@ final class StreamStore: ObservableObject {
     }
 
     @discardableResult
-    func add(_ url: URL, into target: StreamSlot? = nil) -> Bool {
+    func add(_ url: URL, title: String? = nil, into target: StreamSlot? = nil) -> Bool {
         guard Self.validURL(url.absoluteString) != nil else {
             message = "Only http:// and https:// stream URLs are supported."
             return false
@@ -188,7 +191,7 @@ final class StreamStore: ObservableObject {
         message = nil
         if let target {
             if target.isEmpty { target.isMuted = slots.contains { !$0.isEmpty && $0 !== target } }
-            target.load(url)
+            target.load(url, title: title)
             return true
         }
         guard let empty = slots.first(where: { $0.isEmpty }) else {
@@ -196,7 +199,7 @@ final class StreamStore: ObservableObject {
             return false
         }
         empty.isMuted = slots.contains { !$0.isEmpty }
-        empty.load(url)
+        empty.load(url, title: title)
         return true
     }
 

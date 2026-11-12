@@ -40,6 +40,20 @@ final class StreamStoreTests: XCTestCase {
         store.stopAll()
     }
 
+    func testListedTitleSurvivesRetryAndIsClearedOnClose() {
+        let store = StreamStore()
+        let slot = store.slots[1]
+        XCTAssertTrue(store.add(URL(string: "https://invalid.example/stream/nfl-network")!, title: "NFL Network", into: slot))
+        XCTAssertEqual(slot.title, "NFL Network")
+        slot.retry()
+        XCTAssertEqual(slot.title, "NFL Network")
+        store.close(slot)
+        XCTAssertEqual(slot.title, "Empty slot")
+        XCTAssertTrue(store.add(URL(string: "https://invalid.example/stream/nfl-network")!, into: slot))
+        XCTAssertEqual(slot.title, "Nfl Network")
+        store.stopAll()
+    }
+
     func testFirstActivePaneIsAudibleAndOthersAreMuted() {
         let store = StreamStore()
         XCTAssertTrue(store.add(URL(string: "https://invalid.example/one")!, into: store.slots[2]))

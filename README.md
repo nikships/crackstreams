@@ -1,6 +1,6 @@
 # Crackstreams for macOS
 
-A native, video-first macOS app for watching up to four HLS live streams side by side. Paste a Crackstreams-style watch page or a direct `.m3u8` URL. No browser, chat, popup layer, streamlink, or mpv is involved.
+A native, video-first macOS app for watching up to four HLS live streams side by side. Pick a game from the built-in browser, or paste a Crackstreams-style watch page or a direct `.m3u8` URL. No browser, chat, popup layer, streamlink, or mpv is involved.
 
 ## Download
 
@@ -8,6 +8,7 @@ Download the universal, notarized DMG from the latest GitHub release, open it, a
 
 ## Use
 
+- Click **Browse** (or press **⌘B**) to list the sports and games currently posted on crackstreams.mx, then double-click a game or click **Watch**. Use **Browse games** in an empty pane to play into that pane. Live, starting-soon, and 24/7 listings are marked, and times are shown in your time zone.
 - Paste a URL and press **Return**, or click **Add stream**.
 - Drop a URL directly onto a pane to play or replace its stream.
 - Copy a URL and use **Paste from clipboard** in an empty pane.
@@ -54,10 +55,12 @@ The manual **Release** GitHub Actions workflow performs the same steps and publi
 
 ## Architecture
 
+- `StreamDirectory.swift`: league and game listings from the stream site, limited to same-site `/league/` and `/stream/` links, plus the browser's loading and caching state.
 - `Resolver.swift`: watch-page parsing, embed resolution, and HLS validation.
 - `HLSProxy.swift`: token-protected, loopback-only HLS relay with Referer handling, playlist/key/segment rewriting, byte-range support, and request cancellation.
 - `StreamStore.swift`: four independent AVPlayer lifecycles, buffering state, failure recovery, and pane management.
 - `ContentView.swift`: borderless video grid, hover/focus controls, drag and drop, and keyboard navigation.
+- `BrowserView.swift`: the sports and games sheet.
 
 Only loopback playback traffic passes through the relay. Its random per-launch token and Host checks prevent unrelated local processes or web pages from using it as an open proxy.
 

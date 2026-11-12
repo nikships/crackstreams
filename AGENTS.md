@@ -31,6 +31,7 @@ Add or update XCTest cases under `Tests/` for behavior changes. Name suites `*Te
 
 ## Playback invariants
 
+- `StreamDirectory.swift` owns site listings. Return only same-site `/league/` and `/stream/` links so ads and partner sites never reach the player, and drop responses for a league that is no longer selected. Listings hand watch-page URLs to the resolver; they never resolve playlists themselves.
 - `Resolver.swift` owns page/embed parsing and playlist validation. Accept only HTTP(S), cap resolution work, and propagate cancellation.
 - `HLSProxy.swift` owns upstream headers and rewrites every playlist, key, initialization segment, and media segment to a loopback URL. Preserve token validation, Host validation, byte ranges, response limits, and connection cancellation. AVPlayer requires local playlist URLs and conventional media extensions; upstream `.txt` segments are intentional.
 - `StreamStore.swift` owns exactly four independent player lifecycles. Guard asynchronous callbacks with the slot generation so close, replace, and retry cannot affect a newer player. Preserve audio defaults, failure recovery, and input on rejected submissions.

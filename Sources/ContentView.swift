@@ -3,10 +3,18 @@ import SwiftUI
 
 extension Notification.Name {
     static let showStreamLocation = Notification.Name("com.nik.crackstreams.show-location")
+    static let showStreamBrowser = Notification.Name("com.nik.crackstreams.show-browser")
+}
+
+private struct BrowserTarget: Identifiable {
+    let id = UUID()
+    let slot: StreamSlot?
 }
 
 struct ContentView: View {
     @ObservedObject var store: StreamStore
+    @StateObject private var browser = StreamBrowser()
+    @State private var browserTarget: BrowserTarget?
     @State private var isLocationVisible = false
     @FocusState private var isLocationFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -55,6 +63,14 @@ struct ContentView: View {
         .background(Color(red: 0.025, green: 0.032, blue: 0.045))
         .onDrop(of: [.url, .text], isTargeted: nil) { store.handleDrop($0) }
         .onReceive(NotificationCenter.default.publisher(for: .showStreamLocation)) { _ in showLocation() }
+        .onReceive(NotificationCenter.default.publisher(for: .showStreamBrowser)) { _ in openBrowser(into: nil) }
+        .sheet(item: $browserTarget) { target in
+            BrowserView(browser: browser,
+                        destination: destination(for: target.slot),
+                        playingURLs: Set(store.slots.compactMap(\.sourceURL))) { event in
+                store.add(event.url, title: event.title, into: target.slot) ? nil : (store.message ?? "This stream could not be added.")
+            }
+        }
         .background {
             Button("") { isLocationVisible ? hideLocation() : showLocation() }
                 .keyboardShortcut("l", modifiers: .command)
@@ -128,6 +144,13 @@ struct ContentView: View {
                         .stroke(isLocationFocused ? accent.opacity(0.75) : Color.white.opacity(0.09), lineWidth: 1)
                 }
 
+                Button { openBrowser(into: nil) } label: {
+                    Label("Browse", systemImage: "list.bullet.rectangle")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .help("Browse games on \(browser.home.host ?? "the stream site") (⌘B)")
+
                 Button(action: submitLocation) {
                     Label("Add stream", systemImage: "plus")
                         .frame(width: 112)
@@ -161,7 +184,8 @@ struct ContentView: View {
                         onClose: { store.close(slot) },
                         onFocus: { store.toggleFocus(slot) },
                         onDrop: { store.handleDrop($0, into: slot) },
-                        onPaste: { paste(into: slot) }
+                        onPaste: { paste(into: slot) },
+                        onBrowse: { openBrowser(into: slot) }
                     )
                     .frame(width: width, height: height)
                 }
@@ -180,6 +204,9 @@ struct ContentView: View {
                 Image(systemName: "command")
                 Text("⌘L for URL bar")
                     .accessibilityLabel("Command L for URL bar")
+                Text("•")
+                Text("⌘B to browse games")
+                    .accessibilityLabel("Command B to browse games")
                 Text("•")
                 Text("Drop a link on any pane")
             }
@@ -237,6 +264,18 @@ struct ContentView: View {
         if store.addFromInput() && isImmersive { hideLocation() }
     }
 
+    private func openBrowser(into slot: StreamSlot?) {
+        if isImmersive { hideLocation() }
+        browserTarget = BrowserTarget(slot: slot)
+    }
+
+    private func destination(for slot: StreamSlot?) -> String {
+        guard let slot, let index = store.slots.firstIndex(where: { $0 === slot }) else {
+            return "Plays in the next free pane"
+        }
+        return slot.isEmpty ? "Plays in pane \(index + 1)" : "Replaces pane \(index + 1)"
+    }
+
     private func paste(into slot: StreamSlot) {
         guard let text = NSPasteboard.general.string(forType: .string),
               let url = StreamStore.validURL(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
@@ -254,6 +293,7 @@ private struct StreamTile: View {
     let onFocus: () -> Void
     let onDrop: ([NSItemProvider]) -> Bool
     let onPaste: () -> Void
+    let onBrowse: () -> Void
 
     @State private var isDropTargeted = false
     @State private var isHovering = false
@@ -339,8 +379,12 @@ private struct StreamTile: View {
                 Text("Watch page or direct HLS playlist")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button("Paste from clipboard", action: onPaste)
-                    .buttonStyle(.bordered)
+                HStack(spacing: 8) {
+                    Button("Browse games", action: onBrowse)
+                        .buttonStyle(.bordered)
+                    Button("Paste from clipboard", action: onPaste)
+                        .buttonStyle(.bordered)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.white.opacity(0.018))

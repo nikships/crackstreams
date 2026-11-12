@@ -18,6 +18,10 @@ struct CrackstreamsApp: App {
                     NotificationCenter.default.post(name: .showStreamLocation, object: nil)
                 }
                 .keyboardShortcut("l", modifiers: .command)
+                Button("Browse Streams…") {
+                    NotificationCenter.default.post(name: .showStreamBrowser, object: nil)
+                }
+                .keyboardShortcut("b", modifiers: .command)
             }
         }
     }
