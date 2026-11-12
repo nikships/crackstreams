@@ -217,6 +217,12 @@ final class StreamStore: ObservableObject {
         focusedSlotID = focusedSlotID == slot.id ? nil : slot.id
     }
 
+    func soloAudio(_ target: StreamSlot) {
+        for slot in slots where !slot.isEmpty {
+            slot.isMuted = (slot !== target)
+        }
+    }
+
     func handleDrop(_ providers: [NSItemProvider], into target: StreamSlot? = nil) -> Bool {
         guard let provider = providers.first else { return false }
         if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
