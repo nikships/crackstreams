@@ -11,10 +11,10 @@ APP="$ROOT/dist/Crackstreams.app"
 cd "$ROOT"
 if [[ "$UNIVERSAL" == "1" ]]; then
   swift build -c "$CONFIGURATION" --arch arm64 --arch x86_64
-  BINARY="$ROOT/.build/apple/Products/$CONFIGURATION/Crackstreams"
+  BINARY="$(swift build -c "$CONFIGURATION" --arch arm64 --arch x86_64 --show-bin-path)/Crackstreams"
 else
   swift build -c "$CONFIGURATION"
-  BINARY="$ROOT/.build/$CONFIGURATION/Crackstreams"
+  BINARY="$(swift build -c "$CONFIGURATION" --show-bin-path)/Crackstreams"
 fi
 
 rm -rf "$APP"
