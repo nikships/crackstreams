@@ -5,5 +5,17 @@
     <link>https://github.com/nikships/crackstreams</link>
     <description>Releases of the Crackstreams macOS app</description>
     <language>en</language>
+    <item>
+      <title>Version 1.1.0</title>
+      <sparkle:version>6</sparkle:version>
+      <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <sparkle:fullReleaseNotesLink>https://github.com/nikships/crackstreams/releases/tag/v1.1.0</sparkle:fullReleaseNotesLink>
+      <pubDate>Thu, 12 Nov 2026 06:16:28 +0000</pubDate>
+      <enclosure url="https://github.com/nikships/crackstreams/releases/download/v1.1.0/Crackstreams-1.1.0-universal.zip"
+                 type="application/octet-stream"
+                 sparkle:edSignature="xCcih6rpg122hsM+y/J1Pn2y2msGqSDn3QsjbarQwsG71L8OxkupWUbEvWpj7LL2T1pkL//pUI7Vd9S8zuyfCQ=="
+                 length="1882415"/>
+    </item>
   </channel>
 </rss>
