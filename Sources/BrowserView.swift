@@ -161,6 +161,11 @@ struct BrowserView: View {
             if let message {
                 Image(systemName: "exclamationmark.circle.fill")
                 Text(message).lineLimit(2)
+            } else if let refreshError {
+                Image(systemName: "exclamationmark.circle.fill")
+                Text(refreshError).lineLimit(2)
+                Button("Try again", action: browser.refresh)
+                    .controlSize(.small)
             } else {
                 Text("Double-click or press Return to watch. Links usually go live about an hour before start.")
                     .lineLimit(1)
@@ -168,9 +173,20 @@ struct BrowserView: View {
             Spacer()
         }
         .font(.caption)
-        .foregroundStyle(message == nil ? Color.secondary : Color.orange)
+        .foregroundStyle(message == nil && refreshError == nil ? Color.secondary : Color.orange)
         .padding(.horizontal, 16)
         .frame(height: 34)
+    }
+
+    /// Failures that would otherwise be hidden behind listings that are still on screen.
+    private var refreshError: String? {
+        if let error = browser.eventsError, !browser.events.isEmpty {
+            return "Showing earlier listings. \(error)"
+        }
+        if let error = browser.leaguesError, !browser.leagues.isEmpty {
+            return "Couldn’t refresh sports. \(error)"
+        }
+        return nil
     }
 
     private var filteredEvents: [DirectoryEvent] {

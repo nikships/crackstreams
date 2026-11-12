@@ -139,6 +139,27 @@ final class StreamBrowserTests: XCTestCase {
         XCTAssertFalse(browser.isLoadingEvents)
     }
 
+    func testFailedRefreshKeepsCachedGamesAndReportsError() async throws {
+        final class Attempts: @unchecked Sendable { var count = 0 }
+        let attempts = Attempts()
+        let leagues = [nfl]
+        let nflGame = game("nfl-game")
+        let browser = StreamBrowser(leagues: { _ in leagues }, events: { _ in
+            attempts.count += 1
+            if attempts.count > 1 { throw ResolveError.badPage("HTTP 502") }
+            return [nflGame]
+        })
+        browser.open()
+        try await waitUntil(!browser.events.isEmpty)
+        browser.refresh()
+        XCTAssertTrue(browser.isLoadingEvents)
+        XCTAssertEqual(browser.events, [nflGame])
+        try await waitUntil(browser.eventsError != nil)
+        XCTAssertEqual(browser.events, [nflGame])
+        XCTAssertEqual(browser.eventsError, "Could not load the page (HTTP 502).")
+        XCTAssertFalse(browser.isLoadingEvents)
+    }
+
     func testReportsLeagueFailureAndRecoversOnRefresh() async throws {
         final class Attempts: @unchecked Sendable { var count = 0 }
         let attempts = Attempts()
