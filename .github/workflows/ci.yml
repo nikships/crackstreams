@@ -20,4 +20,4 @@ jobs:
       - name: Build app bundle
         run: bash Scripts/build-app.sh
       - name: Validate scripts
-        run: bash -n build.sh Scripts/build-app.sh Scripts/release.sh
+        run: bash -n build.sh Scripts/*.sh

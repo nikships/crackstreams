@@ -21,7 +21,7 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>1.1.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSApplicationCategoryType</key>
@@ -36,6 +36,19 @@
     <false/>
     <key>NSSupportsSuddenTermination</key>
     <false/>
+    <!-- Sparkle reads the appcast that the release workflow commits to main and
+         verifies each archive with this EdDSA public key. The installer service
+         lets the sandboxed app install updates. -->
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/nikships/crackstreams/main/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>GCAr94idRMXMXxLjWXWbel2+GR0OThFYewBBYY/BwJI=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
+    <key>SUEnableInstallerLauncherService</key>
+    <true/>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>

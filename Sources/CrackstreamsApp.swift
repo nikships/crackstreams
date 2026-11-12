@@ -5,6 +5,7 @@ import SwiftUI
 struct CrackstreamsApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = StreamStore()
+    @StateObject private var updater = AppUpdater()
 
     var body: some Scene {
         WindowGroup("Crackstreams") {
@@ -13,6 +14,9 @@ struct CrackstreamsApp: App {
         .windowResizability(.contentMinSize)
         .defaultSize(width: 1180, height: 800)
         .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesButton(updater: updater)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("New Stream…") {
                     NotificationCenter.default.post(name: .showStreamLocation, object: nil)

@@ -2,7 +2,7 @@
 
 ## Scope
 
-Native SwiftUI macOS app that resolves watch pages into HLS feeds and plays up to four streams with AVPlayer. SwiftPM builds one executable; `Scripts/build-app.sh` assembles the `.app`. There is no Xcode project, package dependency, development server, or hot reload.
+Native SwiftUI macOS app that resolves watch pages into HLS feeds and plays up to four streams with AVPlayer. SwiftPM builds one executable; `Scripts/build-app.sh` assembles the `.app` and embeds Sparkle.framework. Sparkle is the only package dependency. There is no Xcode project, development server, or hot reload.
 
 The README covers installation and release credentials. Read it before publishing. Use the source files directly for implementation details.
 
@@ -24,7 +24,7 @@ Before a pull request, reproduce CI:
 ```bash
 swift test
 bash Scripts/build-app.sh
-bash -n build.sh Scripts/build-app.sh Scripts/release.sh
+bash -n build.sh Scripts/*.sh
 ```
 
 Add or update XCTest cases under `Tests/` for behavior changes. Name suites `*Tests` and import the executable module with `@testable import Crackstreams`. Run actor-isolated store tests with `@MainActor`.
@@ -50,11 +50,13 @@ Do not hardcode a resolved CDN playlist or Referer in tests; both rotate. Keep l
 
 ## Signing and releases
 
-Local development builds are ad-hoc signed. Release builds use `Scripts/release.sh` with the environment variables documented in the README. Keep Apple identities, certificates, and notarization passwords in the environment or GitHub Secrets, with no secret files or literal credentials in the repository.
+Local development builds are ad-hoc signed and never start Sparkle's updater. Releases are automatic: a push to `main` that changes app inputs runs `.github/workflows/release.yml`, which versions with `Scripts/next-version.sh`, builds with `Scripts/release.sh`, signs the ZIP for Sparkle, publishes the GitHub release, and commits `appcast.xml` through `Scripts/update-appcast.sh`. Keep `appcast.xml`, docs, and tests out of the workflow's trigger paths so the bot's appcast commit cannot start another release. Raise `CFBundleShortVersionString` in `Info.plist` to start a new minor or major series; never reuse a build number, because Sparkle orders updates by `CFBundleVersion`. Keep Apple identities, certificates, notarization passwords, and the Sparkle private key in the environment or GitHub Secrets, with no secret files or literal credentials in the repository.
 
-A release is complete only when it is universal (`lipo -info`), Developer ID signed with the sandbox and hardened runtime, notarized and stapled, accepted by `spctl`, and tested from the downloaded artifact. The app ZIP and DMG are notarized separately. Staple the app before creating the DMG so the bundled app carries its ticket.
+The app is sandboxed, so Sparkle depends on `SUEnableInstallerLauncherService` in `Info.plist` and the `<bundle id>-spks`/`-spki` mach-lookup exception in `Config/Entitlements.plist`; `ReleaseConfigurationTests` keeps them in step. Sign Sparkle's XPC services, `Autoupdate`, `Updater.app`, and the framework individually before the app, and never with `--deep`.
 
-Use `swift build ... --show-bin-path` to locate SwiftPM binaries; the universal output path varies by toolchain. CI and the manual release workflow are under `.github/workflows/`.
+A release is complete only when it is universal (`lipo -info`), Developer ID signed with the sandbox and hardened runtime, notarized and stapled, accepted by `spctl`, and tested from the downloaded artifact. The app ZIP and DMG are notarized separately; the ZIP is also the Sparkle update archive. Staple the app before creating the DMG so the bundled app carries its ticket.
+
+Use `swift build ... --show-bin-path` to locate SwiftPM binaries; the universal output path varies by toolchain. CI and the release workflow are under `.github/workflows/`.
 
 ## Change discipline
 

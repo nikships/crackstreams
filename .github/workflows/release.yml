@@ -1,60 +1,163 @@
 name: Release
 
+# Cuts a signed, notarized universal release on every push to main that changes
+# the app, and on manual dispatch. The version is one patch above the newest
+# vX.Y.Z tag unless Info.plist or the dispatch input asks for more (see
+# Scripts/next-version.sh). Sparkle drives in-app updates: the release zip is
+# signed with the EdDSA key in SPARKLE_PRIVATE_KEY and listed in appcast.xml on
+# main, which the app polls through SUFeedURL. appcast.xml is not a trigger
+# path, so the bot's appcast commit never re-runs this workflow.
+#
+# Required repository secrets:
+#   APPLE_DEVELOPER_CERTIFICATE_P12_BASE64  base64 Developer ID Application .p12
+#   APPLE_DEVELOPER_CERTIFICATE_PASSWORD    password for that .p12
+#   APPLE_DEVELOPER_ID_APPLICATION          "Developer ID Application: Name (TEAMID)"
+#   APPLE_ID                                Apple ID email for notarytool
+#   APPLE_TEAM_ID                           10-character team ID
+#   APPLE_APP_SPECIFIC_PASSWORD             app-specific password for notarytool
+#   SPARKLE_PRIVATE_KEY                     Sparkle EdDSA private key (generate_keys -x)
+
 on:
+  push:
+    branches: [main]
+    paths:
+      - "Sources/**"
+      - "Package.swift"
+      - "Package.resolved"
+      - "Info.plist"
+      - "Config/**"
+      - "Assets/**"
+      - "Scripts/build-app.sh"
+      - "Scripts/release.sh"
   workflow_dispatch:
     inputs:
       version:
-        description: Version (for example 1.0.1)
-        required: true
-        type: string
-      build_number:
-        description: Integer build number
-        required: true
+        description: "Version without the v prefix, for example 1.2.0. Leave empty to bump the patch."
+        required: false
         type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
+    name: Build, sign, notarize and publish
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Import Developer ID certificate
-        env:
-          CERTIFICATE: ${{ secrets.MAC_CERTS }}
-          CERTIFICATE_PASSWORD: ${{ secrets.CERT_PASSWORD }}
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer || true
+          swift --version
+          echo "CODESIGN_KEYCHAIN=$RUNNER_TEMP/crackstreams-signing.keychain" >> "$GITHUB_ENV"
+
+      - name: Import certificate into an isolated signing keychain
+        uses: apple-actions/import-codesign-certs@v7
+        with:
+          keychain: ${{ runner.temp }}/crackstreams-signing
+          p12-file-base64: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
+
+      - name: Verify signing identity
         run: |
           set -euo pipefail
-          KEYCHAIN="$RUNNER_TEMP/build.keychain"
-          KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
-          echo "$CERTIFICATE" | base64 --decode -o "$RUNNER_TEMP/developer-id.p12"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "$RUNNER_TEMP/developer-id.p12" -k "$KEYCHAIN" \
-            -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: \
-            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
-          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
-      - name: Build, sign, notarize, and staple
+          security find-identity -v -p codesigning "$CODESIGN_KEYCHAIN" | grep -q "Developer ID Application"
+
+      - name: Resolve version
+        id: version
         env:
-          VERSION: ${{ inputs.version }}
-          BUILD_NUMBER: ${{ inputs.build_number }}
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="${REQUESTED:-$(bash Scripts/next-version.sh)}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Invalid version $VERSION"; exit 1; }
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::Tag v$VERSION already exists"; exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_number=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$VERSION"
+
+      - name: Build, sign, notarize and staple
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
           SIGN_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: bash Scripts/release.sh
-      - name: Publish release
+
+      - name: Sign update for Sparkle
+        id: sparkle
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          ZIP: dist/Crackstreams-${{ steps.version.outputs.version }}-universal.zip
+        run: |
+          set -euo pipefail
+          SIGN_UPDATE=".build/artifacts/sparkle/Sparkle/bin/sign_update"
+          SIGNATURE="$(echo "$SPARKLE_PRIVATE_KEY" | "$SIGN_UPDATE" "$ZIP" --ed-key-file - -p)"
+          [ -n "$SIGNATURE" ] || { echo "::error::sign_update produced no signature"; exit 1; }
+          echo "ed_signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
+          echo "length=$(stat -f%z "$ZIP")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
+          set -euo pipefail
           gh release create "v$VERSION" \
             "dist/Crackstreams-$VERSION-universal.dmg" \
             "dist/Crackstreams-$VERSION-universal.zip" \
             "dist/Crackstreams-$VERSION-universal-SHA256SUMS.txt" \
+            --target "$GITHUB_SHA" \
             --title "Crackstreams $VERSION" \
-            --generate-notes
+            --generate-notes \
+            --latest
+
+      - name: Verify the published DMG
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          CHECK="$RUNNER_TEMP/published"
+          rm -rf "$CHECK" && mkdir -p "$CHECK"
+          gh release download "v$VERSION" --pattern "*.dmg" --dir "$CHECK"
+          DMG="$CHECK/Crackstreams-$VERSION-universal.dmg"
+          xcrun stapler validate "$DMG"
+          spctl --assess --verbose=4 --type open --context context:primary-signature "$DMG"
+          MOUNT="$(hdiutil attach -nobrowse -readonly "$DMG" | awk -F'\t' '/\/Volumes\//{print $NF}')"
+          trap 'hdiutil detach "$MOUNT" -quiet || true' EXIT
+          xcrun stapler validate "$MOUNT/Crackstreams.app"
+          spctl --assess --verbose=4 --type execute "$MOUNT/Crackstreams.app"
+          lipo -info "$MOUNT/Crackstreams.app/Contents/MacOS/Crackstreams"
+
+      - name: Publish appcast
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
+          ED_SIGNATURE: ${{ steps.sparkle.outputs.ed_signature }}
+          LENGTH: ${{ steps.sparkle.outputs.length }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -B main origin/main
+          RELEASE_URL="https://github.com/$GITHUB_REPOSITORY/releases/tag/v$VERSION"
+          ARCHIVE_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/Crackstreams-$VERSION-universal.zip"
+          bash Scripts/update-appcast.sh "$VERSION" "$BUILD_NUMBER" "$ARCHIVE_URL" "$ED_SIGNATURE" "$LENGTH" "$RELEASE_URL"
+          git add appcast.xml
+          git commit -m "Update appcast for v$VERSION"
+          git pull --rebase origin main
+          git push origin main

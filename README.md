@@ -4,7 +4,7 @@ A native, video-first macOS app for watching up to four HLS live streams side by
 
 ## Download
 
-Download the universal, notarized DMG from the latest GitHub release, open it, and drag **Crackstreams** to **Applications**. Apple silicon and Intel Macs running macOS 14 or later are supported.
+Download the universal, notarized DMG from the latest GitHub release, open it, and drag **Crackstreams** to **Applications**. Apple silicon and Intel Macs running macOS 14 or later are supported. The app updates itself from then on.
 
 ## Use
 
@@ -21,7 +21,7 @@ Playback errors include an inline retry. Temporary stalls show a reconnecting in
 
 ## Build
 
-Requirements: macOS 14+, a Swift 6 toolchain, and no third-party dependencies.
+Requirements: macOS 14+ and a Swift 6 toolchain. The only package dependency is [Sparkle](https://sparkle-project.org), which SwiftPM fetches on the first build.
 
 ```bash
 swift test
@@ -30,13 +30,33 @@ swift test
 
 This creates `dist/Crackstreams.app`, ad-hoc signs it for local development, and optionally installs it in `~/Applications`.
 
-## Signed release
+## Releases and updates
 
-`Scripts/release.sh` runs tests, builds a universal binary, enables the app sandbox and hardened runtime, signs with Developer ID, notarizes the app and DMG, staples both tickets, verifies Gatekeeper assessment, and emits SHA-256 checksums.
+Every push to `main` that changes the app (`Sources/`, `Package.swift`, `Package.resolved`, `Info.plist`, `Config/`, `Assets/`, `Scripts/build-app.sh`, or `Scripts/release.sh`) runs the **Release** workflow. It:
+
+1. Picks the next version with `Scripts/next-version.sh`: one patch above the newest `vX.Y.Z` tag, or `CFBundleShortVersionString` in `Info.plist` when that is higher. Raise the `Info.plist` value to start a new minor or major series. The build number is the commit count.
+2. Runs `Scripts/release.sh` with an isolated signing keychain: tests, universal build, Developer ID signing with the sandbox and hardened runtime, notarization and stapling of the app and DMG, and Gatekeeper checks.
+3. Signs the release ZIP with Sparkle's EdDSA key and publishes the DMG, ZIP, and checksums as the latest GitHub release.
+4. Downloads the published DMG and checks its notarization ticket, Gatekeeper assessment, and universal binary.
+5. Adds the release to `appcast.xml` on `main`.
+
+Run the workflow manually from the Actions tab to rebuild, or to pick a version explicitly.
+
+The app checks `appcast.xml` daily through Sparkle and offers updates in place. **Crackstreams › Check for Updates…** checks immediately. Debug builds never start the updater.
+
+The workflow needs these repository secrets:
+
+- `APPLE_DEVELOPER_CERTIFICATE_P12_BASE64`: base64-encoded Developer ID Application `.p12`
+- `APPLE_DEVELOPER_CERTIFICATE_PASSWORD`: `.p12` password
+- `APPLE_DEVELOPER_ID_APPLICATION`: full signing identity
+- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`: notarization credentials
+- `SPARKLE_PRIVATE_KEY`: Sparkle EdDSA private key, exported with `generate_keys -x`. Its public half is `SUPublicEDKey` in `Info.plist`.
+
+To cut a release locally with the same steps, minus publishing:
 
 ```bash
-VERSION=1.0.0 \
-BUILD_NUMBER=1 \
+VERSION="$(bash Scripts/next-version.sh)" \
+BUILD_NUMBER="$(git rev-list --count HEAD)" \
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 APPLE_ID="you@example.com" \
 APPLE_PASSWORD="app-specific-password" \
@@ -46,13 +66,6 @@ bash Scripts/release.sh
 
 Credentials are read only from the environment and are never written into the source tree. Release artifacts are ignored by Git.
 
-The manual **Release** GitHub Actions workflow performs the same steps and publishes a GitHub release. Configure these repository secrets first:
-
-- `MAC_CERTS`: base64-encoded Developer ID `.p12`
-- `CERT_PASSWORD`: `.p12` password
-- `APPLE_DEVELOPER_ID_APPLICATION`: full signing identity
-- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
-
 ## Architecture
 
 - `StreamDirectory.swift`: league and game listings from the stream site, limited to same-site `/league/` and `/stream/` links, plus the browser's loading and caching state.
@@ -61,6 +74,7 @@ The manual **Release** GitHub Actions workflow performs the same steps and publi
 - `StreamStore.swift`: four independent AVPlayer lifecycles, buffering state, failure recovery, and pane management.
 - `ContentView.swift`: borderless video grid, hover/focus controls, drag and drop, and keyboard navigation.
 - `BrowserView.swift`: the sports and games sheet.
+- `Updater.swift`: Sparkle's updater and the **Check for Updates…** menu item.
 
 Only loopback playback traffic passes through the relay. Its random per-launch token and Host checks prevent unrelated local processes or web pages from using it as an open proxy.
 
