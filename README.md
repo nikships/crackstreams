@@ -8,14 +8,15 @@ Download the universal, notarized DMG from the latest GitHub release, open it, a
 
 ## Use
 
-- Click **Browse** (or press **⌘B**) to list the sports and games currently posted on crackstreams.mx, then double-click a game or click **Watch**. Use **Browse games** in an empty pane to play into that pane. Live, starting-soon, and 24/7 listings are marked, and times are shown in your time zone.
+- The window runs completely borderless with no system title bar: traffic lights and controls stay hidden until you hover over the window, and auto-hide during idle playback. Drag anywhere on the background or video frame to move the window.
+- Click **Browse** (or press **⌘B**) to open the Live Sports Directory from crackstreams.mx, then double-click a game or click **Watch**. Use **Browse games** in an empty pane to play into that pane. Live, starting-soon, and 24/7 listings are marked, and times are shown in your time zone.
 - Paste a URL and press **Return**, or click **Add stream**.
 - Drop a URL directly onto a pane to play or replace its stream.
 - Copy a URL and use **Paste from clipboard** in an empty pane.
-- Hover over a pane for playback, mute, expand, and close controls. The same controls appear when the pane receives keyboard focus.
-- The first active pane starts audible; additional panes start muted.
-- Press **⌘L** or hover at the top edge to reveal the URL bar while watching. Press **Esc** to hide it.
-- Expand a pane to fill the window; use the restore control to return to the four-pane grid.
+- Hover over a pane for live title, solo audio, mute, replace, expand, and close controls. The same controls appear when the pane receives keyboard focus.
+- The first active pane starts audible; additional panes start muted. Click the headphones button on a muted pane (or press **⌥⌘1–4**) to switch audio exclusively to that stream.
+- Press **⌘L** or hover at the top edge to reveal the floating URL command bar while watching. Press **Esc** to hide it.
+- Expand a pane to fill the window (**⌘1–4**); use the restore control or **⌘0** to return to the four-pane grid.
 
 Playback errors include an inline retry. Temporary stalls show a reconnecting indicator without discarding the player.
 
@@ -72,8 +73,9 @@ Credentials are read only from the environment and are never written into the so
 - `Resolver.swift`: watch-page parsing, embed resolution, and HLS validation.
 - `HLSProxy.swift`: token-protected, loopback-only HLS relay with Referer handling, playlist/key/segment rewriting, byte-range support, and request cancellation.
 - `StreamStore.swift`: four independent AVPlayer lifecycles, buffering state, failure recovery, and pane management.
-- `ContentView.swift`: borderless video grid, hover/focus controls, drag and drop, and keyboard navigation.
-- `BrowserView.swift`: the sports and games sheet.
+- `ContentView.swift`: borderless multiview grid, floating command bar, hover/focus controls, drag and drop, and keyboard navigation.
+- `WindowChrome.swift`: MPV-style chromeless `NSWindow` integration, hover-only traffic lights, idle auto-hide, and video-surface window dragging.
+- `BrowserView.swift`: the Live Sports Directory sheet.
 - `Updater.swift`: Sparkle's updater and the **Check for Updates…** menu item.
 
 Only loopback playback traffic passes through the relay. Its random per-launch token and Host checks prevent unrelated local processes or web pages from using it as an open proxy.
