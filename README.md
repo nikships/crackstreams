@@ -112,7 +112,7 @@ crackstreams/
 ├── Assets/
 │   ├── AppIcon.iconset/
 │   ├── AppIcon.icns
-│   └── AppIcon.svg
+│   └── AppIcon.png
 ├── Config/
 │   └── Entitlements.plist
 ├── Scripts/

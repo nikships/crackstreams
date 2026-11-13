@@ -74,33 +74,17 @@ enum ChromeVisibility {
     }
 }
 
-/// Custom multiview emblem echoing the app icon's 2x2 glowing quad geometry.
-struct BrandQuadMark: View {
-    var size: CGFloat = 18
+/// The app icon, drawn in-app as the brand mark so the two never drift apart.
+struct BrandMark: View {
+    var size: CGFloat = 20
 
     var body: some View {
-        let cell = (size - 3) / 2
-        let radius = max(2, cell * 0.26)
-        VStack(spacing: 3) {
-            HStack(spacing: 3) {
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Theme.accentGradient)
-                    .frame(width: cell, height: cell)
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Color.white.opacity(0.24))
-                    .frame(width: cell, height: cell)
-            }
-            HStack(spacing: 3) {
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Color.white.opacity(0.24))
-                    .frame(width: cell, height: cell)
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Theme.accentGradient)
-                    .frame(width: cell, height: cell)
-            }
-        }
-        .shadow(color: Theme.accent.opacity(0.35), radius: 6, y: 1)
-        .accessibilityHidden(true)
+        Image(nsImage: NSApp.applicationIconImage)
+            .resizable()
+            .interpolation(.high)
+            .aspectRatio(contentMode: .fit)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
 

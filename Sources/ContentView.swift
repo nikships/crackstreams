@@ -151,7 +151,7 @@ struct ContentView: View {
         VStack(spacing: 14) {
             ZStack {
                 HStack(spacing: 9) {
-                    BrandQuadMark(size: 15)
+                    BrandMark(size: 22)
                     Text("Crackstreams")
                         .font(.system(size: 13, weight: .semibold))
                         .tracking(0.2)
