@@ -1,59 +1,177 @@
+<div align="center">
+
+<img src="https://github.com/user-attachments/assets/12a7e709-f315-440e-bf5f-542f46aca727" alt="Crackstreams for macOS — Native 4-Pane HLS Sports Player" width="100%" />
+
 # Crackstreams for macOS
 
-A native, video-first macOS app for watching up to four HLS live streams side by side. Pick a game from the built-in browser, or paste a Crackstreams-style watch page or a direct `.m3u8` URL. No browser, chat, popup layer, streamlink, or mpv is involved.
+**Watch up to four live HLS sports streams side by side in a native, borderless macOS player.**<br/>
+Zero ads. Zero popups. Zero browser overhead.
 
-## Download
+[![Release](https://img.shields.io/github/v/release/nikships/crackstreams?style=for-the-badge&color=2794E8)](https://github.com/nikships/crackstreams/releases/latest)
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/nikships/crackstreams/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/nikships/crackstreams/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/nikships/crackstreams/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/nikships/crackstreams?style=for-the-badge&color=1f2937)](https://github.com/nikships/crackstreams/blob/main/LICENSE)
+[![Stars](https://img.shields.io/github/stars/nikships/crackstreams?style=for-the-badge&color=eab308)](https://github.com/nikships/crackstreams/stargazers)
 
-Download the universal, notarized DMG from the latest GitHub release, open it, and drag **Crackstreams** to **Applications**. Apple silicon and Intel Macs running macOS 14 or later are supported. The app updates itself from then on.
+**[Download Universal DMG](https://github.com/nikships/crackstreams/releases/latest)** · [Keyboard Shortcuts](#keyboard-shortcuts) · [Build from Source](#quick-start) · [Architecture](#architecture)
 
-## Use
+<br/>
 
-- The window runs completely borderless with no system title bar: traffic lights and controls stay hidden until you hover over the window, and auto-hide during idle playback. Drag anywhere on the background or video frame to move the window.
-- Click **Browse** (or press **⌘B**) to open the Live Sports Directory from crackstreams.mx, then double-click a game or click **Watch**. Use **Browse games** in an empty pane to play into that pane. Live, starting-soon, and 24/7 listings are marked, and times are shown in your time zone.
-- Paste a URL and press **Return**, or click **Add stream**.
-- Drop a URL directly onto a pane to play or replace its stream.
-- Copy a URL and use **Paste from clipboard** in an empty pane.
-- Hover over a pane for live title, solo audio, mute, replace, expand, and close controls. The same controls appear when the pane receives keyboard focus.
-- The first active pane starts audible; additional panes start muted. Click the headphones button on a muted pane (or press **⌥⌘1–4**) to switch audio exclusively to that stream.
-- Press **⌘L** or hover at the top edge to reveal the floating URL command bar while watching. Press **Esc** to hide it.
-- Expand a pane to fill the window (**⌘1–4**); use the restore control or **⌘0** to return to the four-pane grid.
+<img src="https://github.com/user-attachments/assets/61d1af11-d214-456b-be98-edfe5b82e4f8" alt="Crackstreams four-pane borderless macOS multiview showcase" width="900" />
 
-Playback errors include an inline retry. Temporary stalls show a reconnecting indicator without discarding the player.
+</div>
 
-## Build
+## What is this?
 
-Requirements: macOS 14+ and a Swift 6 toolchain. The only package dependency is [Sparkle](https://sparkle-project.org), which SwiftPM fetches on the first build.
+Crackstreams is a native SwiftUI and `AVPlayer` client for macOS 14+ that resolves watch pages and direct `.m3u8` playlists into up to four simultaneous live video panes. It strips away browser tabs, ad overlays, fake player prompts, and chat sidebars by resolving the underlying HLS feed and playing it through a token-protected loopback relay.
+
+Pick games from the built-in Live Sports Directory (`⌘B`), drag a URL onto any pane, or paste a stream link into the floating command bar (`⌘L`). No browser, streamlink, or mpv installation is required.
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/418aebe3-e22d-484a-8c64-a2ffbee4c8b2" alt="Cluttered browser streaming versus Crackstreams native four-pane macOS player" width="900" />
+</div>
+
+## Features
+
+- **Borderless MPV-style window**: Runs edge-to-edge without a gray system title bar. Traffic lights and overlays appear only on hover or keyboard focus, auto-hide during idle playback, and let you drag the window by any background or video surface.
+- **Four-pane multiview**: Run 1 to 4 independent `AVPlayer` feeds simultaneously, expand any pane full-window (`⌘1`–`⌘4`), or jump back to the 2×2 grid (`⌘0`).
+- **Smart audio & one-click solo**: Pane 1 starts audible while additional panes start muted. Click the headphones button on any pane or press `⌥⌘1`–`⌥⌘4` to switch audio exclusively to that game.
+- **Built-in Live Sports Directory (`⌘B`)**: Browse live, starting-soon, and 24/7 listings from `crackstreams.mx` with start times converted to your local time zone. Only same-site `/league/` and `/stream/` links are shown.
+- **Floating URL bar & drag-and-drop (`⌘L`)**: Reveal the smoked-glass command bar with `⌘L` or by hovering near the top edge, drop a link onto any pane to play or replace it, or paste straight from the clipboard.
+- **Resilient & secure playback**: Temporary stalls display a non-destructive `Reconnecting…` pill instead of tearing down the player, and failures include an inline retry. Upstream `Referer` headers and playlist rewriting run inside a loopback-only relay gated by a random per-launch token and `Host` validation.
+- **Universal & auto-updating**: Ships as a signed, notarized Apple silicon + Intel DMG with Sparkle EdDSA in-app updates.
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `⌘L` | Toggle floating stream URL bar (`Esc` to hide) |
+| `⌘B` | Open Live Sports Directory |
+| `⌘1` – `⌘4` | Expand or restore pane 1–4 |
+| `⌘0` | Return to all four panes |
+| `⌥⌘1` – `⌥⌘4` | Solo audio on pane 1–4 |
+
+## Quick Start
+
+### Install the App (Recommended)
+
+1. Download the universal, notarized `.dmg` from the [Latest Release](https://github.com/nikships/crackstreams/releases/latest).
+2. Open the disk image and drag **Crackstreams** into **Applications** (requires macOS 14 or later on Apple silicon or Intel).
+3. Launch **Crackstreams**. Future updates arrive automatically via **Crackstreams › Check for Updates…** (Sparkle).
+
+### Build from Source
+
+Requires macOS 14+ and a Swift 6 toolchain. [Sparkle](https://sparkle-project.org) is the only package dependency and is fetched automatically by SwiftPM.
 
 ```bash
+git clone https://github.com/nikships/crackstreams.git
+cd crackstreams
 swift test
 ./build.sh --install
 ```
 
-This creates `dist/Crackstreams.app`, ad-hoc signs it for local development, and optionally installs it in `~/Applications`.
+`./build.sh --install` builds `dist/Crackstreams.app`, embeds `Sparkle.framework`, applies ad-hoc signing for local development, and installs it to `~/Applications/Crackstreams.app`.
 
-## Releases and updates
+## Architecture
 
-Every push to `main` that changes the app (`Sources/`, `Package.swift`, `Package.resolved`, `Info.plist`, `Config/`, `Assets/`, `Scripts/build-app.sh`, or `Scripts/release.sh`) runs the **Release** workflow. It:
+```mermaid
+flowchart LR
+    UI["ContentView + WindowChrome<br/>Borderless 4-pane grid & chrome"]
+    Browser["BrowserView + StreamDirectory<br/>Same-site league & game listings"]
+    Store["StreamStore<br/>4 independent AVPlayer slots"]
+    Resolver["Resolver<br/>Watch page -> .m3u8 + Referer"]
+    Proxy["HLSProxy (127.0.0.1)<br/>Token-gated loopback relay"]
+    AV["AVPlayer<br/>Native hardware playback"]
 
-1. Picks the next version with `Scripts/next-version.sh`: one patch above the newest `vX.Y.Z` tag, or `CFBundleShortVersionString` in `Info.plist` when that is higher. Raise the `Info.plist` value to start a new minor or major series. The build number is the commit count.
-2. Runs `Scripts/release.sh` with an isolated signing keychain: tests, universal build, Developer ID signing with the sandbox and hardened runtime, notarization and stapling of the app and DMG, and Gatekeeper checks.
-3. Signs the release ZIP with Sparkle's EdDSA key and publishes the DMG, ZIP, and checksums as the latest GitHub release.
-4. Downloads the published DMG and checks its notarization ticket, Gatekeeper assessment, and universal binary.
-5. Adds the release to `appcast.xml` on `main`.
+    Browser -->|watch URL| Store
+    UI -->|URL / drop / paste| Store
+    Store -->|resolve| Resolver
+    Resolver -->|playlist + Referer| Store
+    Store -->|loopback URL| AV
+    AV <-->|rewritten playlists & segments| Proxy
+```
 
-Run the workflow manually from the Actions tab to rebuild, or to pick a version explicitly.
+- `Sources/StreamDirectory.swift`: Fetches and parses league and event listings, limiting results to same-site `/league/` and `/stream/` links and dropping stale responses when switching leagues.
+- `Sources/Resolver.swift`: Extracts embeds and validates HTTP(S) HLS playlists with bounded payload sizes and task cancellation.
+- `Sources/HLSProxy.swift`: Loopback-only HTTP relay on `127.0.0.1` that injects upstream `Referer` headers, supports byte ranges, and rewrites playlists, keys, and segments to local URLs protected by a per-launch token and `Host` check.
+- `Sources/StreamStore.swift`: Manages four independent `AVPlayer` slots with generation guards, mute/solo state, buffering indicators, and inline retry.
+- `Sources/ContentView.swift` & `Sources/PlayerView.swift`: Render the borderless 2×2 grid, floating smoked-glass command bar, hover/focus controls, and drag-and-drop targets.
+- `Sources/WindowChrome.swift`: Configures the chromeless `NSWindow`, hover-only traffic lights, idle cursor auto-hide, and video-surface window dragging.
+- `Sources/BrowserView.swift`: Renders the Live Sports Directory modal sheet.
+- `Sources/Updater.swift`: Integrates Sparkle automatic updates (disabled in debug builds).
 
-The app checks `appcast.xml` daily through Sparkle and offers updates in place. **Crackstreams › Check for Updates…** checks immediately. Debug builds never start the updater.
+## Project Structure
 
-The workflow needs these repository secrets:
+```text
+crackstreams/
+├── .github/
+│   └── workflows/
+│       ├── ci.yml
+│       └── release.yml
+├── Assets/
+│   ├── AppIcon.iconset/
+│   ├── AppIcon.icns
+│   └── AppIcon.svg
+├── Config/
+│   └── Entitlements.plist
+├── Scripts/
+│   ├── build-app.sh
+│   ├── next-version.sh
+│   ├── release.sh
+│   └── update-appcast.sh
+├── Sources/
+│   ├── BrowserView.swift
+│   ├── ContentView.swift
+│   ├── CrackstreamsApp.swift
+│   ├── HLSProxy.swift
+│   ├── PlayerView.swift
+│   ├── Resolver.swift
+│   ├── StreamDirectory.swift
+│   ├── StreamStore.swift
+│   ├── Updater.swift
+│   └── WindowChrome.swift
+├── Tests/
+│   ├── HLSProxyTests.swift
+│   ├── ReleaseConfigurationTests.swift
+│   ├── ResolverTests.swift
+│   ├── StreamDirectoryTests.swift
+│   ├── StreamStoreTests.swift
+│   └── WindowChromeTests.swift
+├── AGENTS.md
+├── Info.plist
+├── LICENSE
+├── Package.resolved
+├── Package.swift
+├── README.md
+├── appcast.xml
+└── build.sh
+```
 
-- `APPLE_DEVELOPER_CERTIFICATE_P12_BASE64`: base64-encoded Developer ID Application `.p12`
-- `APPLE_DEVELOPER_CERTIFICATE_PASSWORD`: `.p12` password
-- `APPLE_DEVELOPER_ID_APPLICATION`: full signing identity
-- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`: notarization credentials
-- `SPARKLE_PRIVATE_KEY`: Sparkle EdDSA private key, exported with `generate_keys -x`. Its public half is `SUPublicEDKey` in `Info.plist`.
+## Documentation
 
-To cut a release locally with the same steps, minus publishing:
+| Resource | Description |
+|---|---|
+| [AGENTS.md](AGENTS.md) | Playback invariants, development commands, and live validation checklist |
+| [Package.swift](Package.swift) | SwiftPM manifest and Sparkle dependency |
+| [Info.plist](Info.plist) | Bundle configuration, macOS 14 minimum, and Sparkle EdDSA feed keys |
+| [Config/Entitlements.plist](Config/Entitlements.plist) | App Sandbox and Sparkle XPC mach-lookup entitlements |
+| [.github/workflows/ci.yml](.github/workflows/ci.yml) | Automated unit tests, app bundle build, and shell script checks |
+| [.github/workflows/release.yml](.github/workflows/release.yml) | Universal Developer ID signing, notarization, DMG publishing, and appcast updates |
+| [Scripts/release.sh](Scripts/release.sh) | Reproducible local release, notarization, and stapling script |
+
+<details>
+<summary><strong>Releases &amp; Code Signing Pipeline</strong></summary>
+
+Every push to `main` touching app inputs (`Sources/`, `Package.swift`, `Package.resolved`, `Info.plist`, `Config/`, `Assets/`, `Scripts/build-app.sh`, or `Scripts/release.sh`) runs `.github/workflows/release.yml`:
+
+1. Computes the next semantic version via `Scripts/next-version.sh` (one patch above the newest `vX.Y.Z` tag, or `CFBundleShortVersionString` in `Info.plist` if higher) with commit count as `CFBundleVersion`.
+2. Runs `Scripts/release.sh` using an isolated keychain: unit tests, universal binary build, Developer ID signing with App Sandbox and hardened runtime, notarization, stapling, and `spctl` verification.
+3. Signs the release ZIP with `SPARKLE_PRIVATE_KEY` (EdDSA) and publishes the DMG, ZIP, and checksums to GitHub Releases.
+4. Verifies the published DMG download and commits the updated `appcast.xml` to `main`.
+
+Required GitHub Actions secrets: `APPLE_DEVELOPER_CERTIFICATE_P12_BASE64`, `APPLE_DEVELOPER_CERTIFICATE_PASSWORD`, `APPLE_DEVELOPER_ID_APPLICATION`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`, and `SPARKLE_PRIVATE_KEY` (matching `SUPublicEDKey` in `Info.plist`).
+
+To run the release pipeline locally (without publishing):
 
 ```bash
 VERSION="$(bash Scripts/next-version.sh)" \
@@ -65,23 +183,32 @@ APPLE_TEAM_ID="TEAMID" \
 bash Scripts/release.sh
 ```
 
-Credentials are read only from the environment and are never written into the source tree. Release artifacts are ignored by Git.
+</details>
 
-## Architecture
+## Contributing
 
-- `StreamDirectory.swift`: league and game listings from the stream site, limited to same-site `/league/` and `/stream/` links, plus the browser's loading and caching state.
-- `Resolver.swift`: watch-page parsing, embed resolution, and HLS validation.
-- `HLSProxy.swift`: token-protected, loopback-only HLS relay with Referer handling, playlist/key/segment rewriting, byte-range support, and request cancellation.
-- `StreamStore.swift`: four independent AVPlayer lifecycles, buffering state, failure recovery, and pane management.
-- `ContentView.swift`: borderless multiview grid, floating command bar, hover/focus controls, drag and drop, and keyboard navigation.
-- `WindowChrome.swift`: MPV-style chromeless `NSWindow` integration, hover-only traffic lights, idle auto-hide, and video-surface window dragging.
-- `BrowserView.swift`: the Live Sports Directory sheet.
-- `Updater.swift`: Sparkle's updater and the **Check for Updates…** menu item.
+Contributions are welcome. Before opening a pull request, run the CI verification suite locally:
 
-Only loopback playback traffic passes through the relay. Its random per-launch token and Host checks prevent unrelated local processes or web pages from using it as an open proxy.
+```bash
+swift test
+bash Scripts/build-app.sh
+bash -n build.sh Scripts/*.sh
+```
 
-## Project
+<a href="https://github.com/nikships/crackstreams/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=nikships/crackstreams" alt="Contributors" />
+</a>
+
+## License
 
 Crackstreams is an independent client and is not affiliated with any streaming site or broadcaster. Stream availability and site markup can change. Use it only with feeds you are authorized to access.
 
-Released under the MIT License.
+Released under the [MIT License](LICENSE).
+
+---
+
+<div align="center">
+
+[![Star History Chart](https://api.star-history.com/svg?repos=nikships/crackstreams&type=Date)](https://star-history.com/#nikships/crackstreams&Date)
+
+</div>
