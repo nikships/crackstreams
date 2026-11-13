@@ -60,7 +60,7 @@ struct BrowserView: View {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .stroke(Theme.accent.opacity(0.28), lineWidth: 0.75)
                         )
-                    BrandQuadMark(size: 16)
+                    BrandMark(size: 22)
                 }
 
                 VStack(alignment: .leading, spacing: 3) {

@@ -4,24 +4,30 @@ import SwiftUI
 
 struct PlayerView: NSViewRepresentable {
     let player: AVPlayer?
+    var onDoubleClick: () -> Void = {}
 
-    func makeNSView(context: Context) -> AVPlayerView {
+    func makeNSView(context: Context) -> DraggablePlayerView {
         let view = DraggablePlayerView()
-        view.controlsStyle = .floating
-        view.showsFullScreenToggleButton = true
+        // Pane chrome in ContentView owns every control, so AVKit's own bar never competes with it.
+        view.controlsStyle = .none
+        view.showsFullScreenToggleButton = false
         view.showsSharingServiceButton = false
         view.showsTimecodes = false
         view.allowsVideoFrameAnalysis = false
         view.videoGravity = .resizeAspect
-        view.allowsPictureInPicturePlayback = true
+        view.onDoubleClick = onDoubleClick
         return view
     }
 
-    func updateNSView(_ view: AVPlayerView, context: Context) {
+    func updateNSView(_ view: DraggablePlayerView, context: Context) {
         if view.player !== player { view.player = player }
+        view.onDoubleClick = onDoubleClick
     }
 }
 
 final class DraggablePlayerView: AVPlayerView {
+    /// Invoked by the window's event monitor, which sees clicks before AVKit's internal subviews do.
+    var onDoubleClick: (() -> Void)?
+
     override var mouseDownCanMoveWindow: Bool { true }
 }

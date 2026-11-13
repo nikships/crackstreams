@@ -22,6 +22,9 @@ final class StreamSlot: ObservableObject, Identifiable {
     @Published var isMuted: Bool {
         didSet { player?.isMuted = isMuted }
     }
+    @Published var volume: Float = 1 {
+        didSet { player?.volume = volume }
+    }
 
     private var loadTask: Task<Void, Never>?
     private var generation = UUID()
@@ -58,6 +61,7 @@ final class StreamSlot: ObservableObject, Identifiable {
                     ))
                     let player = AVPlayer(playerItem: item)
                     player.isMuted = self.isMuted
+                    player.volume = self.volume
                     player.automaticallyWaitsToMinimizeStalling = true
                     self.player = player
                     self.title = self.preferredTitle ?? resolved.title
@@ -215,6 +219,18 @@ final class StreamStore: ObservableObject {
 
     func toggleFocus(_ slot: StreamSlot) {
         focusedSlotID = focusedSlotID == slot.id ? nil : slot.id
+    }
+
+    /// One audio control per pane: muting the audible pane, or making a muted pane the one you hear.
+    /// Mixing unmutes the pane without silencing the others.
+    func toggleAudio(_ target: StreamSlot, mixing: Bool = false) {
+        if !target.isMuted {
+            target.isMuted = true
+        } else if mixing {
+            target.isMuted = false
+        } else {
+            soloAudio(target)
+        }
     }
 
     func soloAudio(_ target: StreamSlot) {

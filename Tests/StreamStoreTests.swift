@@ -78,4 +78,25 @@ final class StreamStoreTests: XCTestCase {
         XCTAssertFalse(store.slots[2].isMuted)
         store.stopAll()
     }
+
+    func testAudioButtonSwitchesSoundOrMixesWithOption() {
+        let store = StreamStore()
+        XCTAssertTrue(store.add(URL(string: "https://invalid.example/one")!))
+        XCTAssertTrue(store.add(URL(string: "https://invalid.example/two")!))
+        XCTAssertTrue(store.add(URL(string: "https://invalid.example/three")!))
+
+        store.toggleAudio(store.slots[1])
+        XCTAssertTrue(store.slots[0].isMuted)
+        XCTAssertFalse(store.slots[1].isMuted)
+        XCTAssertTrue(store.slots[2].isMuted)
+
+        store.toggleAudio(store.slots[2], mixing: true)
+        XCTAssertFalse(store.slots[1].isMuted)
+        XCTAssertFalse(store.slots[2].isMuted)
+
+        store.toggleAudio(store.slots[1])
+        XCTAssertTrue(store.slots[1].isMuted)
+        XCTAssertFalse(store.slots[2].isMuted)
+        store.stopAll()
+    }
 }

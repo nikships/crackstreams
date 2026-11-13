@@ -36,8 +36,9 @@ enum Theme {
 /// Pure rules for MPV-style window chrome visibility.
 enum ChromeVisibility {
     static let idleHideInterval: TimeInterval = 2.4
-    static let topBarRevealHeight: CGFloat = 12
-    static let topComfortZoneHeight: CGFloat = 58
+    /// Keeps the pointer awake near the traffic lights. Nothing else reveals from the top edge,
+    /// so pane controls in the top row stay reachable.
+    static let topComfortZoneHeight: CGFloat = 40
     static let trafficLightExclusionWidth: CGFloat = 86
 
     static func showsTrafficLights(
@@ -56,39 +57,34 @@ enum ChromeVisibility {
         isPlayingAny: Bool,
         isLocationVisible: Bool,
         isSheetPresented: Bool,
-        isNearTopZone: Bool
+        isNearTopZone: Bool,
+        isPointerOverChrome: Bool = false
     ) -> Bool {
-        isPlayingAny && !isLocationVisible && !isSheetPresented && !isNearTopZone
+        isPlayingAny && !isLocationVisible && !isSheetPresented && !isNearTopZone && !isPointerOverChrome
+    }
+
+    /// A pane is "full screen" only when it is the focused pane of a full-screen window.
+    static func isPaneFullScreen(isFocused: Bool, isWindowFullScreen: Bool) -> Bool {
+        isFocused && isWindowFullScreen
+    }
+
+    /// Leaves full screen on collapse only when the app entered it for a pane.
+    static func shouldExitFullScreenOnCollapse(enteredForPane: Bool, isWindowFullScreen: Bool) -> Bool {
+        enteredForPane && isWindowFullScreen
     }
 }
 
-/// Custom multiview emblem echoing the app icon's 2x2 glowing quad geometry.
-struct BrandQuadMark: View {
-    var size: CGFloat = 18
+/// The app icon, drawn in-app as the brand mark so the two never drift apart.
+struct BrandMark: View {
+    var size: CGFloat = 20
 
     var body: some View {
-        let cell = (size - 3) / 2
-        let radius = max(2, cell * 0.26)
-        VStack(spacing: 3) {
-            HStack(spacing: 3) {
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Theme.accentGradient)
-                    .frame(width: cell, height: cell)
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Color.white.opacity(0.24))
-                    .frame(width: cell, height: cell)
-            }
-            HStack(spacing: 3) {
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Color.white.opacity(0.24))
-                    .frame(width: cell, height: cell)
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Theme.accentGradient)
-                    .frame(width: cell, height: cell)
-            }
-        }
-        .shadow(color: Theme.accent.opacity(0.35), radius: 6, y: 1)
-        .accessibilityHidden(true)
+        Image(nsImage: NSApp.applicationIconImage)
+            .resizable()
+            .interpolation(.high)
+            .aspectRatio(contentMode: .fit)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
 
@@ -102,8 +98,8 @@ struct WindowChromeConfigurator: NSViewRepresentable {
     let isPlayingAny: Bool
     let isLocationVisible: Bool
     let isSheetPresented: Bool
+    let isPointerOverChrome: Bool
     let reduceMotion: Bool
-    let onTopEdgeHover: () -> Void
 
     func makeNSView(context: Context) -> WindowChromeTrackingView {
         let view = WindowChromeTrackingView()
@@ -160,13 +156,18 @@ struct WindowChromeConfigurator: NSViewRepresentable {
             refreshPointerState(in: window, triggeredByMotion: false)
         }
 
-        func update(from newParent: WindowChromeConfigurator, window: NSWindow?) {
-            let wasCanIdle = ChromeVisibility.canAutoHidePointer(
+        private func canAutoHide(isNearTopZone: Bool? = nil) -> Bool {
+            ChromeVisibility.canAutoHidePointer(
                 isPlayingAny: parent.isPlayingAny,
                 isLocationVisible: parent.isLocationVisible,
                 isSheetPresented: parent.isSheetPresented,
-                isNearTopZone: parent.isNearTopZone
+                isNearTopZone: isNearTopZone ?? parent.isNearTopZone,
+                isPointerOverChrome: parent.isPointerOverChrome
             )
+        }
+
+        func update(from newParent: WindowChromeConfigurator, window: NSWindow?) {
+            let wasCanIdle = canAutoHide()
             parent = newParent
             guard let window else { return }
 
@@ -176,12 +177,7 @@ struct WindowChromeConfigurator: NSViewRepresentable {
             }
 
             configureWindowAppearance(window)
-            let nowCanIdle = ChromeVisibility.canAutoHidePointer(
-                isPlayingAny: parent.isPlayingAny,
-                isLocationVisible: parent.isLocationVisible,
-                isSheetPresented: parent.isSheetPresented,
-                isNearTopZone: parent.isNearTopZone
-            )
+            let nowCanIdle = canAutoHide()
             if !nowCanIdle {
                 cancelIdleTimer()
                 if parent.isPointerIdle { parent.isPointerIdle = false }
@@ -265,7 +261,12 @@ struct WindowChromeConfigurator: NSViewRepresentable {
                         switch event.type {
                         case .leftMouseDown:
                             let hit = window.contentView?.hitTest(event.locationInWindow)
-                            if Self.isVideoDragSurface(hit) {
+                            if event.clickCount == 2, let player = Self.videoSurface(hit), let onDoubleClick = player.onDoubleClick {
+                                self.videoDragStartPoint = nil
+                                self.videoDragDownEvent = nil
+                                onDoubleClick()
+                                shouldConsume = true
+                            } else if Self.videoSurface(hit) != nil {
                                 self.videoDragStartPoint = event.locationInWindow
                                 self.videoDragDownEvent = event
                             } else {
@@ -295,25 +296,22 @@ struct WindowChromeConfigurator: NSViewRepresentable {
             }
         }
 
-        private static func isVideoDragSurface(_ hitView: NSView?) -> Bool {
+        /// Returns the player under a click when the click lands on video rather than a control.
+        private static func videoSurface(_ hitView: NSView?) -> DraggablePlayerView? {
             var current = hitView
-            var insidePlayer = false
             while let view = current {
-                if view is NSControl { return false }
+                if view is NSControl { return nil }
                 let typeName = String(describing: type(of: view))
                 if typeName.contains("Button")
                     || typeName.contains("Slider")
                     || typeName.contains("Scrubber")
                     || typeName.contains("TextField") {
-                    return false
+                    return nil
                 }
-                if view is DraggablePlayerView {
-                    insidePlayer = true
-                    break
-                }
+                if let player = view as? DraggablePlayerView { return player }
                 current = view.superview
             }
-            return insidePlayer
+            return nil
         }
 
         func refreshPointerState(in window: NSWindow, triggeredByMotion: Bool) {
@@ -344,11 +342,10 @@ struct WindowChromeConfigurator: NSViewRepresentable {
             lastScreenMouseLocation = screenMouse
 
             let topDistance = windowRect.height - point.y
-            let nearTop = inside && topDistance >= 0 && topDistance <= ChromeVisibility.topComfortZoneHeight
-            let atTopRevealEdge = inside
+            let nearTop = inside
                 && topDistance >= 0
-                && topDistance <= ChromeVisibility.topBarRevealHeight
-                && point.x > ChromeVisibility.trafficLightExclusionWidth
+                && topDistance <= ChromeVisibility.topComfortZoneHeight
+                && point.x <= ChromeVisibility.trafficLightExclusionWidth
 
             if parent.isWindowHovered != inside {
                 parent.isWindowHovered = inside
@@ -365,15 +362,7 @@ struct WindowChromeConfigurator: NSViewRepresentable {
             } else if pointerMoved {
                 if parent.isPointerIdle { parent.isPointerIdle = false }
                 scheduleIdleTimer()
-                if atTopRevealEdge && parent.isImmersive && !parent.isLocationVisible && !parent.isSheetPresented {
-                    parent.onTopEdgeHover()
-                }
-            } else if idleWorkItem == nil && !parent.isPointerIdle && ChromeVisibility.canAutoHidePointer(
-                isPlayingAny: parent.isPlayingAny,
-                isLocationVisible: parent.isLocationVisible,
-                isSheetPresented: parent.isSheetPresented,
-                isNearTopZone: nearTop
-            ) {
+            } else if idleWorkItem == nil && !parent.isPointerIdle && canAutoHide(isNearTopZone: nearTop) {
                 scheduleIdleTimer()
             }
 
@@ -406,23 +395,13 @@ struct WindowChromeConfigurator: NSViewRepresentable {
 
         private func scheduleIdleTimer() {
             cancelIdleTimer()
-            guard ChromeVisibility.canAutoHidePointer(
-                isPlayingAny: parent.isPlayingAny,
-                isLocationVisible: parent.isLocationVisible,
-                isSheetPresented: parent.isSheetPresented,
-                isNearTopZone: parent.isNearTopZone
-            ) else { return }
+            guard canAutoHide() else { return }
 
             let item = DispatchWorkItem { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self, let window = self.observedWindow else { return }
                     self.idleWorkItem = nil
-                    guard ChromeVisibility.canAutoHidePointer(
-                        isPlayingAny: self.parent.isPlayingAny,
-                        isLocationVisible: self.parent.isLocationVisible,
-                        isSheetPresented: self.parent.isSheetPresented,
-                        isNearTopZone: self.parent.isNearTopZone
-                    ) else { return }
+                    guard self.canAutoHide() else { return }
                     self.parent.isPointerIdle = true
                     self.applyTrafficLightsVisibility(in: window, animated: !self.parent.reduceMotion)
                 }
