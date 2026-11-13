@@ -15,12 +15,18 @@ struct ContentView: View {
     @ObservedObject var store: StreamStore
     @StateObject private var browser = StreamBrowser()
     @State private var browserTarget: BrowserTarget?
-    @State private var isLocationVisible = false
+    @State private var isPaletteVisible = false
     @State private var isWindowHovered = false
     @State private var isNearTopZone = false
     @State private var isPointerIdle = false
+    @State private var isPointerOverChrome = false
+    @State private var isWindowFullScreen = false
+    @State private var didEnterFullScreenForPane = false
     @FocusState private var isLocationFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let launchHeaderHeight: CGFloat = 112
+    private static let launchFooterHeight: CGFloat = 40
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -28,15 +34,15 @@ struct ContentView: View {
 
             grid
 
-            if !isImmersive {
+            if isImmersive {
+                immersiveChrome
+            } else {
                 VStack(spacing: 0) {
                     launchHeader
                     Spacer(minLength: 0)
                     launchFooter
                 }
                 .transition(.opacity)
-            } else {
-                immersiveChrome
             }
         }
         .ignoresSafeArea(.container, edges: .top)
@@ -49,15 +55,22 @@ struct ContentView: View {
                 isPointerIdle: $isPointerIdle,
                 isImmersive: isImmersive,
                 isPlayingAny: isPlayingAny,
-                isLocationVisible: isLocationVisible,
+                isLocationVisible: isPaletteVisible,
                 isSheetPresented: browserTarget != nil,
-                reduceMotion: reduceMotion,
-                onTopEdgeHover: showLocation
+                isPointerOverChrome: isPointerOverChrome,
+                reduceMotion: reduceMotion
             )
         )
         .onDrop(of: [.url, .text], isTargeted: nil) { store.handleDrop($0) }
-        .onReceive(NotificationCenter.default.publisher(for: .showStreamLocation)) { _ in showLocation() }
+        .onReceive(NotificationCenter.default.publisher(for: .showStreamLocation)) { _ in showPalette() }
         .onReceive(NotificationCenter.default.publisher(for: .showStreamBrowser)) { _ in openBrowser(into: nil) }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
+            isWindowFullScreen = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in
+            isWindowFullScreen = false
+            didEnterFullScreenForPane = false
+        }
         .sheet(item: $browserTarget) { target in
             BrowserView(
                 browser: browser,
@@ -68,28 +81,32 @@ struct ContentView: View {
             }
         }
         .onChange(of: isImmersive) {
-            if isImmersive && !isLocationVisible {
+            if isImmersive {
+                isPaletteVisible = false
                 DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
             }
         }
         .onChange(of: browserTarget?.id) {
-            if browserTarget == nil && isImmersive && !isLocationVisible {
+            if browserTarget == nil && isImmersive && !isPaletteVisible {
                 DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
             }
         }
+        .onChange(of: store.focusedSlotID) {
+            if store.focusedSlotID == nil { exitPaneFullScreenIfNeeded() }
+        }
         .background {
-            Button("") { isLocationVisible ? hideLocation() : showLocation() }
+            Button("") { isPaletteVisible ? hidePalette() : showPalette() }
                 .keyboardShortcut("l", modifiers: .command)
                 .hidden()
-            Button("") { hideLocation() }
+            Button("") { handleEscape() }
                 .keyboardShortcut(.escape, modifiers: [])
                 .hidden()
         }
-        .animation(reduceMotion ? .none : .easeOut(duration: 0.2), value: isLocationVisible)
+        .animation(reduceMotion ? .none : .easeOut(duration: 0.18), value: isPaletteVisible)
         .animation(reduceMotion ? .none : .easeOut(duration: 0.22), value: isImmersive)
         .animation(reduceMotion ? .none : .easeOut(duration: 0.18), value: isWindowHovered)
-        .animation(reduceMotion ? .none : .easeOut(duration: 0.18), value: isNearTopZone)
         .animation(reduceMotion ? .none : .easeOut(duration: 0.22), value: isPointerIdle)
+        .animation(reduceMotion ? .none : .snappy(duration: 0.28), value: store.focusedSlotID)
     }
 
     private var isImmersive: Bool { store.slots.contains { !$0.isEmpty } }
@@ -102,6 +119,8 @@ struct ContentView: View {
     }
 
     private var activeCount: Int { store.slots.count { !$0.isEmpty } }
+
+    private var nextEmptyIndex: Int? { store.slots.firstIndex(where: \.isEmpty) }
 
     private var trimmedInput: String {
         store.input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -116,344 +135,134 @@ struct ContentView: View {
             ZStack {
                 Theme.canvas
                 RadialGradient(
-                    colors: [Theme.accent.opacity(0.11), Theme.accentDeep.opacity(0.04), .clear],
+                    colors: [Theme.accent.opacity(0.10), Theme.accentDeep.opacity(0.03), .clear],
                     center: .init(x: 0.5, y: 0.0),
                     startRadius: 20,
-                    endRadius: 520
+                    endRadius: 560
                 )
             }
             .ignoresSafeArea()
         }
     }
 
-    // MARK: - Launch Studio Header & Footer
+    // MARK: - Launch
 
     private var launchHeader: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 14) {
             ZStack {
                 HStack(spacing: 9) {
-                    BrandQuadMark(size: 16)
+                    BrandQuadMark(size: 15)
                     Text("Crackstreams")
-                        .font(.system(size: 13.5, weight: .semibold))
-                        .tracking(0.15)
-                        .foregroundStyle(.white.opacity(0.95))
-                    Text("\(activeCount) / 4")
-                        .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.58))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2.5)
-                        .background(Color.white.opacity(0.07), in: Capsule())
-                        .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 0.5))
-                        .accessibilityLabel("\(activeCount) of 4 panes occupied")
+                        .font(.system(size: 13, weight: .semibold))
+                        .tracking(0.2)
+                        .foregroundStyle(.white.opacity(0.92))
                 }
 
                 HStack {
-                    // Reserves clean space on the left for hover-only macOS traffic lights.
-                    Spacer(minLength: 88)
-                    Button { openBrowser(into: nil) } label: {
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(Theme.live)
-                                .frame(width: 6, height: 6)
-                                .shadow(color: Theme.live.opacity(0.7), radius: 4)
-                            Text("Browse")
-                                .font(.system(size: 12, weight: .medium))
-                            Text("⌘B")
-                                .font(.system(size: 10.5, weight: .medium).monospaced())
-                                .foregroundStyle(.white.opacity(0.48))
-                        }
-                        .foregroundStyle(.white.opacity(0.92))
-                        .padding(.horizontal, 11)
-                        .frame(height: 26)
-                        .background(Color.white.opacity(0.065), in: Capsule())
-                        .overlay(Capsule().stroke(Color.white.opacity(0.11), lineWidth: 0.75))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Browse games on \(browser.home.host ?? "the stream site") (⌘B)")
-                    .accessibilityLabel("Browse")
+                    // Leaves the hover-only traffic lights a clean corner.
+                    Spacer(minLength: ChromeVisibility.trafficLightExclusionWidth)
+                    browseButton
                 }
             }
-            .frame(height: 34)
-            .padding(.top, 2)
+            .frame(height: 30)
+            .padding(.top, 8)
 
-            HStack(spacing: 10) {
-                urlInputField(height: 42)
-
-                Button(action: submitLocation) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 11, weight: .bold))
-                        Text("Add stream")
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    .foregroundStyle(trimmedInput.isEmpty ? Color.white.opacity(0.38) : Color.white)
-                    .padding(.horizontal, 16)
-                    .frame(height: 42)
-                    .background {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .fill(trimmedInput.isEmpty ? AnyShapeStyle(Color.white.opacity(0.055)) : AnyShapeStyle(Theme.accentGradient))
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .stroke(trimmedInput.isEmpty ? Color.white.opacity(0.08) : Color.white.opacity(0.22), lineWidth: 0.75)
-                    }
-                    .shadow(color: trimmedInput.isEmpty ? .clear : Theme.accentDeep.opacity(0.35), radius: 10, y: 4)
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.defaultAction)
-                .disabled(trimmedInput.isEmpty)
-                .accessibilityLabel("Add stream")
-            }
+            urlField(height: 46)
         }
         .padding(.horizontal, 20)
-        .padding(.bottom, 12)
+    }
+
+    private var browseButton: some View {
+        Button { openBrowser(into: nil) } label: {
+            HStack(spacing: 7) {
+                LiveDot(size: 6)
+                Text("Live games")
+                    .font(.system(size: 12, weight: .medium))
+                Text("⌘B")
+                    .font(.system(size: 10.5, weight: .medium).monospaced())
+                    .foregroundStyle(.white.opacity(0.42))
+            }
+            .foregroundStyle(.white.opacity(0.92))
+            .padding(.horizontal, 11)
+            .frame(height: 28)
+            .background(Color.white.opacity(0.06), in: Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 0.75))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("Browse live games on \(browser.home.host ?? "the stream site") (⌘B)")
+        .accessibilityLabel("Browse live games")
     }
 
     private var launchFooter: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 14) {
             if let message = store.message {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(Theme.amber)
-                    Text(message)
-                        .lineLimit(1)
-                        .help(message)
-                        .foregroundStyle(.white.opacity(0.92))
-                    Button { store.message = nil } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Dismiss message")
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(Theme.amber.opacity(0.12), in: Capsule())
-                .overlay(Capsule().stroke(Theme.amber.opacity(0.28), lineWidth: 0.75))
+                inlineWarning(message)
             } else {
-                shortcutHint("⌘L", "URL bar")
-                Text("·").foregroundStyle(.quaternary)
-                shortcutHint("⌘B", "Live directory")
-                Text("·").foregroundStyle(.quaternary)
-                Text("Drag any watch or .m3u8 link onto a viewport")
-                    .foregroundStyle(.white.opacity(0.45))
+                shortcutHint("⌘L", "Paste a link")
+                shortcutHint("⌘B", "Live games")
+                shortcutHint("⌘1–4", "Expand a pane")
+                Text("Double-click video for full screen")
+                    .foregroundStyle(.white.opacity(0.40))
+                    .lineLimit(1)
             }
-            Spacer()
+            Spacer(minLength: 12)
             HStack(spacing: 6) {
                 Image(systemName: "shield.lefthalf.filled")
                     .font(.system(size: 10))
-                Text("Direct HLS · Ad & popup free")
+                Text("Direct HLS · No ads or popups")
+                    .lineLimit(1)
             }
-            .foregroundStyle(.white.opacity(0.36))
+            .foregroundStyle(.white.opacity(0.32))
         }
         .font(.system(size: 11.5))
         .padding(.horizontal, 22)
-        .frame(height: 38)
+        .frame(height: Self.launchFooterHeight)
     }
 
     private func shortcutHint(_ key: String, _ label: String) -> some View {
-        HStack(spacing: 5) {
-            Text(key)
-                .font(.system(size: 10.5, weight: .semibold).monospaced())
-                .foregroundStyle(.white.opacity(0.75))
-                .padding(.horizontal, 5.5)
-                .padding(.vertical, 1.5)
-                .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(Color.white.opacity(0.09), lineWidth: 0.5))
+        HStack(spacing: 6) {
+            KeyCap(key)
             Text(label)
                 .foregroundStyle(.white.opacity(0.48))
+                .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: - Immersive MPV Floating Chrome
-
-    @ViewBuilder
-    private var immersiveChrome: some View {
-        // Top-edge reveal sensor outside the traffic light corner.
-        HStack(spacing: 0) {
-            Color.clear
-                .frame(width: ChromeVisibility.trafficLightExclusionWidth, height: 12)
-                .allowsHitTesting(false)
-            Color.clear
-                .frame(maxWidth: .infinity)
-                .frame(height: 12)
-                .contentShape(Rectangle())
-                .onHover { hovering in
-                    if hovering { showLocation() }
-                }
-                .accessibilityHidden(true)
-        }
-
-        if isLocationVisible {
-            floatingCommandBar
-                .padding(.leading, ChromeVisibility.trafficLightExclusionWidth)
-                .padding(.trailing, 14)
-                .padding(.top, 8)
-                .transition(.move(edge: .top).combined(with: .opacity))
-        } else if isWindowHovered && isNearTopZone && !isPointerIdle && browserTarget == nil {
-            floatingTopQuickPill
-                .padding(.top, 8)
-                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
-        }
-
-        if let message = store.message {
-            messageBanner(message)
-                .frame(maxHeight: .infinity, alignment: .bottom)
-                .padding(.bottom, 20)
-        }
-    }
-
-    private var floatingTopQuickPill: some View {
-        HStack(spacing: 2) {
-            Button(action: showLocation) {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 10.5, weight: .bold))
-                        .foregroundStyle(Theme.accent)
-                    Text("Add Stream")
-                        .font(.system(size: 11.5, weight: .medium))
-                }
-                .padding(.horizontal, 10)
-                .frame(height: 26)
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Show stream URL bar")
-
-            Rectangle()
-                .fill(Color.white.opacity(0.12))
-                .frame(width: 1, height: 12)
-
-            Button { openBrowser(into: nil) } label: {
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(Theme.live)
-                        .frame(width: 5.5, height: 5.5)
-                    Text("Browse")
-                        .font(.system(size: 11.5, weight: .medium))
-                }
-                .padding(.horizontal, 10)
-                .frame(height: 26)
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Browse")
-
-            Text("\(activeCount)/4")
-                .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.55))
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(Color.white.opacity(0.08), in: Capsule())
-                .padding(.trailing, 3)
-        }
-        .foregroundStyle(.white.opacity(0.92))
-        .padding(3)
-        .background {
-            Capsule()
-                .fill(.ultraThinMaterial)
-                .overlay(Capsule().fill(Color.black.opacity(0.45)))
-        }
-        .overlay(Capsule().stroke(Theme.glassBorder(), lineWidth: 0.75))
-        .shadow(color: .black.opacity(0.45), radius: 14, y: 6)
-    }
-
-    private var floatingCommandBar: some View {
+    private func inlineWarning(_ message: String) -> some View {
         HStack(spacing: 8) {
-            BrandQuadMark(size: 15)
-                .padding(.leading, 4)
-
-            Text("\(activeCount)/4")
-                .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.62))
-                .padding(.horizontal, 6.5)
-                .padding(.vertical, 3)
-                .background(Color.white.opacity(0.08), in: Capsule())
-                .accessibilityLabel("\(activeCount) of 4 panes occupied")
-
-            urlInputField(height: 34)
-
-            Button { openBrowser(into: nil) } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "list.bullet.rectangle")
-                        .font(.system(size: 11.5, weight: .medium))
-                    Text("Browse")
-                        .font(.system(size: 12, weight: .medium))
-                }
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Theme.amber)
+            Text(message)
+                .lineLimit(1)
+                .help(message)
                 .foregroundStyle(.white.opacity(0.92))
-                .padding(.horizontal, 11)
-                .frame(height: 34)
-                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Color.white.opacity(0.12), lineWidth: 0.75))
-            }
-            .buttonStyle(.plain)
-            .help("Browse games on \(browser.home.host ?? "the stream site") (⌘B)")
-            .accessibilityLabel("Browse")
-
-            Button(action: submitLocation) {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .bold))
-                    Text("Add stream")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(trimmedInput.isEmpty ? Color.white.opacity(0.38) : Color.white)
-                .padding(.horizontal, 12)
-                .frame(height: 34)
-                .background {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(trimmedInput.isEmpty ? AnyShapeStyle(Color.white.opacity(0.06)) : AnyShapeStyle(Theme.accentGradient))
-                }
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut(.defaultAction)
-            .disabled(trimmedInput.isEmpty)
-            .accessibilityLabel("Add stream")
-
-            Button(action: hideLocation) {
+            Button { store.message = nil } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.65))
-                    .frame(width: 28, height: 28)
-                    .background(Color.white.opacity(0.06), in: Circle())
+                    .font(.system(size: 9.5, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.55))
             }
             .buttonStyle(.plain)
-            .help("Hide stream bar (Esc)")
-            .accessibilityLabel("Hide stream URL bar")
+            .accessibilityLabel("Dismiss message")
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: 860)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Theme.canvas.opacity(0.76))
-                )
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Theme.glassBorder(), lineWidth: 0.85)
-        )
-        .shadow(color: .black.opacity(0.5), radius: 22, y: 10)
-        .onHover { hovering in
-            if !hovering && !isLocationFocused { hideLocation() }
-        }
+        .padding(.vertical, 4)
+        .background(Theme.amber.opacity(0.12), in: Capsule())
+        .overlay(Capsule().stroke(Theme.amber.opacity(0.28), lineWidth: 0.75))
     }
 
-    private func urlInputField(height: CGFloat) -> some View {
-        HStack(spacing: 8) {
+    private func urlField(height: CGFloat) -> some View {
+        let radius: CGFloat = height > 44 ? 12 : 10
+        return HStack(spacing: 10) {
             Image(systemName: "link")
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(isLocationFocused ? Theme.accent : .white.opacity(0.42))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(isLocationFocused ? Theme.accent : .white.opacity(0.40))
                 .accessibilityHidden(true)
 
-            TextField("Watch page or .m3u8 URL", text: $store.input)
+            TextField("Paste a watch page or .m3u8 link", text: $store.input)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
+                .font(.system(size: 14))
                 .focused($isLocationFocused)
                 .onSubmit(submitLocation)
                 .accessibilityLabel("Stream URL")
@@ -462,41 +271,213 @@ struct ContentView: View {
                 Button { store.input = "" } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(.white.opacity(0.40))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear stream URL")
-            } else if !isImmersive && !isLocationFocused {
-                Text("⌘L")
-                    .font(.system(size: 10.5, weight: .medium).monospaced())
-                    .foregroundStyle(.white.opacity(0.32))
-                    .padding(.horizontal, 5.5)
-                    .padding(.vertical, 2)
-                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            } else if !isLocationFocused {
+                KeyCap("⌘L")
                     .accessibilityHidden(true)
             }
+
+            submitButton(height: height - 12)
         }
-        .padding(.horizontal, 12)
+        .padding(.leading, 14)
+        .padding(.trailing, 6)
         .frame(height: height)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: height > 38 ? 11 : 9, style: .continuous))
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: radius, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: height > 38 ? 11 : 9, style: .continuous)
-                .stroke(Theme.glassBorder(highlighted: isLocationFocused), lineWidth: isLocationFocused ? 1.2 : 0.75)
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .stroke(Theme.glassBorder(highlighted: isLocationFocused), lineWidth: isLocationFocused ? 1.1 : 0.75)
         }
     }
 
-    // MARK: - Multiview Stage
+    private func submitButton(height: CGFloat) -> some View {
+        let isEnabled = !trimmedInput.isEmpty
+        return Button(action: submitLocation) {
+            HStack(spacing: 6) {
+                Text("Play")
+                    .font(.system(size: 12.5, weight: .semibold))
+                Image(systemName: "return")
+                    .font(.system(size: 10, weight: .bold))
+                    .opacity(0.8)
+            }
+            .foregroundStyle(isEnabled ? Color.white : Color.white.opacity(0.34))
+            .padding(.horizontal, 13)
+            .frame(height: height)
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isEnabled ? AnyShapeStyle(Theme.accentGradient) : AnyShapeStyle(Color.white.opacity(0.06)))
+            }
+            .shadow(color: isEnabled ? Theme.accentDeep.opacity(0.35) : .clear, radius: 8, y: 3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(.defaultAction)
+        .disabled(!isEnabled)
+        .accessibilityLabel("Add stream")
+    }
+
+    // MARK: - Immersive chrome
+
+    /// One chrome layer per region: panes own their top edge, the dock owns the bottom
+    /// center, and the palette only opens on request. Nothing reveals from the window's top edge.
+    @ViewBuilder
+    private var immersiveChrome: some View {
+        if showsDock {
+            dock
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, 14)
+                .transition(.opacity.combined(with: .offset(y: 8)))
+        }
+
+        if let message = store.message, !isPaletteVisible {
+            messageBanner(message)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, showsDock ? 64 : 18)
+        }
+
+        if isPaletteVisible {
+            palette
+        }
+    }
+
+    private var showsDock: Bool {
+        isWindowHovered && !isPointerIdle && !isPaletteVisible && browserTarget == nil
+    }
+
+    private var dock: some View {
+        HStack(spacing: 2) {
+            HStack(spacing: 3) {
+                DockIconButton(
+                    systemName: "square.grid.2x2",
+                    label: "Show all four panes (⌘0)",
+                    isSelected: store.focusedSlotID == nil
+                ) {
+                    store.focusedSlotID = nil
+                }
+                ForEach(Array(store.slots.enumerated()), id: \.element.id) { index, slot in
+                    DockPaneChip(slot: slot, index: index, isFocused: store.focusedSlotID == slot.id) {
+                        store.toggleFocus(slot)
+                    }
+                }
+            }
+            .padding(.horizontal, 3)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.12))
+                .frame(width: 1, height: 16)
+                .padding(.horizontal, 4)
+
+            DockTextButton(title: "Add", help: "Add a stream (⌘L)", action: showPalette) {
+                Image(systemName: "plus")
+                    .font(.system(size: 10.5, weight: .bold))
+                    .foregroundStyle(Theme.accent)
+            }
+            DockTextButton(title: "Live games", help: "Browse live games (⌘B)", action: { openBrowser(into: nil) }) {
+                LiveDot(size: 5.5)
+            }
+        }
+        .padding(4)
+        .background {
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .overlay(Capsule().fill(Color.black.opacity(0.50)))
+        }
+        .overlay(Capsule().stroke(Theme.glassBorder(), lineWidth: 0.75))
+        .shadow(color: .black.opacity(0.5), radius: 18, y: 8)
+        .onHover { isPointerOverChrome = $0 }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Multiview controls")
+    }
+
+    private var palette: some View {
+        ZStack(alignment: .top) {
+            Color.black.opacity(0.48)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture(perform: hidePalette)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Text("ADD STREAM")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .tracking(0.8)
+                        .foregroundStyle(.white.opacity(0.48))
+                    Spacer()
+                    KeyCap("esc")
+                    Text("to close")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.36))
+                }
+
+                urlField(height: 48)
+
+                HStack(spacing: 8) {
+                    Image(systemName: nextEmptyIndex == nil ? "rectangle.fill.on.rectangle.fill" : "rectangle.inset.filled")
+                        .font(.system(size: 11))
+                        .foregroundStyle(nextEmptyIndex == nil ? Theme.amber : Theme.accent)
+                    Text(paletteDestination)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    PalettePillButton(title: "Paste", systemName: "doc.on.clipboard", action: pasteIntoField)
+                    PalettePillButton(title: "Live games", systemName: "dot.radiowaves.left.and.right") {
+                        openBrowser(into: nil)
+                    }
+                }
+
+                if let message = store.message {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Theme.amber)
+                        Text(message)
+                            .foregroundStyle(.white.opacity(0.9))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(.system(size: 12))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.amber.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Theme.amber.opacity(0.25), lineWidth: 0.75))
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: 620)
+            .background {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.canvas.opacity(0.80)))
+            }
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.glassBorder(), lineWidth: 0.85))
+            .shadow(color: .black.opacity(0.55), radius: 30, y: 14)
+            .padding(.horizontal, 28)
+            .padding(.top, 76)
+            .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+        }
+        .transition(.opacity)
+    }
+
+    private var paletteDestination: String {
+        guard let index = nextEmptyIndex else {
+            return "All four panes are playing. Drop a link on a pane to replace it."
+        }
+        return activeCount == 0 ? "Plays in pane \(index + 1) with sound" : "Plays in pane \(index + 1), muted"
+    }
+
+    // MARK: - Multiview stage
 
     private var grid: some View {
         GeometryReader { geometry in
             let shown = visibleSlots
             let columns = store.focusedSlotID == nil ? 2 : 1
             let rows = store.focusedSlotID == nil ? 2 : 1
-            let spacing: CGFloat = isImmersive ? 0 : 12
-            let totalSpacingX = spacing * CGFloat(max(0, columns - 1))
-            let totalSpacingY = spacing * CGFloat(max(0, rows - 1))
-            let width = max(0, (geometry.size.width - totalSpacingX) / CGFloat(columns))
-            let height = max(0, (geometry.size.height - totalSpacingY) / CGFloat(rows))
+            let spacing: CGFloat = isImmersive ? 0 : 10
+            let width = max(0, (geometry.size.width - spacing * CGFloat(columns - 1)) / CGFloat(columns))
+            let height = max(0, (geometry.size.height - spacing * CGFloat(rows - 1)) / CGFloat(rows))
 
             LazyVGrid(
                 columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns),
@@ -508,27 +489,32 @@ struct ContentView: View {
                     StreamTile(
                         slot: slot,
                         slotIndex: slotIndex,
+                        tileWidth: width,
                         isImmersive: isImmersive,
                         isFocused: isFocused,
-                        occupiesTrafficLightCorner: isImmersive && (isFocused || slotIndex == 0),
-                        isTopBarObscured: isLocationVisible && (isFocused || slotIndex < 2),
+                        isFullScreen: ChromeVisibility.isPaneFullScreen(isFocused: isFocused, isWindowFullScreen: isWindowFullScreen),
+                        isNextTarget: slotIndex == nextEmptyIndex,
+                        occupiesTrafficLightCorner: isImmersive && !isWindowFullScreen && (isFocused || slotIndex == 0),
+                        isChromeSuppressed: isPaletteVisible || browserTarget != nil,
                         activeCount: activeCount,
                         isWindowHovered: isWindowHovered,
                         isPointerIdle: isPointerIdle,
                         onClose: { store.close(slot) },
                         onFocus: { store.toggleFocus(slot) },
-                        onSoloAudio: { store.soloAudio(slot) },
+                        onFullScreen: { toggleFullScreen(slot) },
+                        onToggleAudio: { store.toggleAudio(slot, mixing: $0) },
                         onDrop: { store.handleDrop($0, into: slot) },
                         onPaste: { paste(into: slot) },
-                        onBrowse: { openBrowser(into: slot) }
+                        onBrowse: { openBrowser(into: slot) },
+                        onChromeHover: { isPointerOverChrome = $0 }
                     )
                     .frame(width: width, height: height)
                 }
             }
         }
         .padding(.horizontal, isImmersive ? 0 : 20)
-        .padding(.top, isImmersive ? 0 : 98)
-        .padding(.bottom, isImmersive ? 0 : 38)
+        .padding(.top, isImmersive ? 0 : Self.launchHeaderHeight)
+        .padding(.bottom, isImmersive ? 0 : Self.launchFooterHeight)
     }
 
     private func messageBanner(_ message: String) -> some View {
@@ -536,27 +522,28 @@ struct ContentView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(Theme.amber)
             Text(message)
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 12.5, weight: .medium))
                 .lineLimit(2)
             Button { store.message = nil } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white.opacity(0.65))
-                    .frame(width: 22, height: 22)
+                    .frame(width: 20, height: 20)
                     .background(Color.white.opacity(0.08), in: Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss message")
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.leading, 14)
+        .padding(.trailing, 8)
+        .padding(.vertical, 8)
         .background {
             Capsule()
                 .fill(.ultraThinMaterial)
                 .overlay(Capsule().fill(Theme.canvas.opacity(0.82)))
         }
-        .overlay(Capsule().stroke(Theme.amber.opacity(0.35), lineWidth: 0.85))
+        .overlay(Capsule().stroke(Theme.amber.opacity(0.32), lineWidth: 0.85))
         .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
         .padding(.horizontal, 24)
         .accessibilityLabel(message)
@@ -570,24 +557,63 @@ struct ContentView: View {
         return store.slots
     }
 
-    private func showLocation() {
-        isLocationVisible = true
-        isPointerIdle = false
+    // MARK: - Actions
+
+    private func showPalette() {
+        if isImmersive {
+            isPaletteVisible = true
+            isPointerIdle = false
+        }
         DispatchQueue.main.async { isLocationFocused = true }
     }
 
-    private func hideLocation() {
+    private func hidePalette() {
         isLocationFocused = false
-        isLocationVisible = false
+        isPaletteVisible = false
+    }
+
+    private func handleEscape() {
+        if isPaletteVisible {
+            hidePalette()
+        } else if store.focusedSlotID != nil {
+            store.focusedSlotID = nil
+        } else {
+            isLocationFocused = false
+        }
     }
 
     private func submitLocation() {
-        if store.addFromInput() && isImmersive { hideLocation() }
+        if store.addFromInput() && isImmersive { hidePalette() }
     }
 
     private func openBrowser(into slot: StreamSlot?) {
-        if isImmersive { hideLocation() }
+        hidePalette()
         browserTarget = BrowserTarget(slot: slot)
+    }
+
+    private func toggleFullScreen(_ slot: StreamSlot) {
+        guard let window = NSApp.mainWindow else { return }
+        let isFull = window.styleMask.contains(.fullScreen)
+        if ChromeVisibility.isPaneFullScreen(isFocused: store.focusedSlotID == slot.id, isWindowFullScreen: isFull) {
+            // The collapse handler performs the single exit, even for a full screen the user entered.
+            didEnterFullScreenForPane = true
+            store.focusedSlotID = nil
+            return
+        }
+        store.focusedSlotID = slot.id
+        if !isFull {
+            didEnterFullScreenForPane = true
+            window.toggleFullScreen(nil)
+        }
+    }
+
+    private func exitPaneFullScreenIfNeeded() {
+        guard let window = NSApp.mainWindow else { return }
+        let isFull = window.styleMask.contains(.fullScreen)
+        if ChromeVisibility.shouldExitFullScreenOnCollapse(enteredForPane: didEnterFullScreenForPane, isWindowFullScreen: isFull) {
+            window.toggleFullScreen(nil)
+        }
+        didEnterFullScreenForPane = false
     }
 
     private func destination(for slot: StreamSlot?) -> String {
@@ -595,6 +621,16 @@ struct ContentView: View {
             return "Plays in the next free pane"
         }
         return slot.isEmpty ? "Plays in pane \(index + 1)" : "Replaces pane \(index + 1)"
+    }
+
+    private func pasteIntoField() {
+        guard let text = NSPasteboard.general.string(forType: .string)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+            store.message = "The clipboard is empty."
+            return
+        }
+        store.input = text
+        isLocationFocused = true
     }
 
     private func paste(into slot: StreamSlot) {
@@ -612,19 +648,24 @@ struct ContentView: View {
 private struct StreamTile: View {
     @ObservedObject var slot: StreamSlot
     let slotIndex: Int
+    let tileWidth: CGFloat
     let isImmersive: Bool
     let isFocused: Bool
+    let isFullScreen: Bool
+    let isNextTarget: Bool
     let occupiesTrafficLightCorner: Bool
-    let isTopBarObscured: Bool
+    let isChromeSuppressed: Bool
     let activeCount: Int
     let isWindowHovered: Bool
     let isPointerIdle: Bool
     let onClose: () -> Void
     let onFocus: () -> Void
-    let onSoloAudio: () -> Void
+    let onFullScreen: () -> Void
+    let onToggleAudio: (_ mixing: Bool) -> Void
     let onDrop: ([NSItemProvider]) -> Bool
     let onPaste: () -> Void
     let onBrowse: () -> Void
+    let onChromeHover: (Bool) -> Void
 
     @State private var isDropTargeted = false
     @State private var isHovering = false
@@ -633,13 +674,15 @@ private struct StreamTile: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var showsControls: Bool {
-        !slot.isEmpty && !isTopBarObscured && ((isHovering && isWindowHovered && !isPointerIdle) || isTileFocused)
+        !slot.isEmpty && !isChromeSuppressed && ((isHovering && isWindowHovered && !isPointerIdle) || isTileFocused)
     }
 
     private var isPlaying: Bool {
         if case .playing = slot.state { return true }
         return false
     }
+
+    private var isWide: Bool { tileWidth >= 560 }
 
     private var tileCornerRadius: CGFloat {
         isImmersive ? 0 : 14
@@ -677,7 +720,7 @@ private struct StreamTile: View {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
-                        Text("Reconnecting…")
+                        Text("Buffering…")
                             .font(.system(size: 12.5, weight: .medium))
                     }
                     .padding(.horizontal, 14)
@@ -715,7 +758,8 @@ private struct StreamTile: View {
             }
             .onDrop(of: [.url, .text], isTargeted: $isDropTargeted, perform: onDrop)
             .background(HoverSensor(isHovering: $isHovering, reduceMotion: reduceMotion))
-            .focusable()
+            // Keyboard-only focus: a click on video must not pin the controls open.
+            .focusable(interactions: .activate)
             .focused($isTileFocused)
             .focusEffectDisabled()
             .onChange(of: isWindowHovered) {
@@ -730,71 +774,104 @@ private struct StreamTile: View {
                 }
             }
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(slot.title)
+            .accessibilityLabel(slot.isEmpty ? "Pane \(slotIndex + 1), empty" : slot.title)
     }
 
     private var tileControlBar: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .center, spacing: 8) {
             HStack(spacing: 7) {
                 Circle()
                     .fill(statusDotColor)
                     .frame(width: 6.5, height: 6.5)
                     .shadow(color: statusDotColor.opacity(0.8), radius: 4)
                 Text(slot.title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12.5, weight: .semibold))
                     .lineLimit(1)
                     .help(slot.title)
-                    .shadow(color: .black.opacity(0.75), radius: 3, y: 1)
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .frame(height: 28)
             .background {
                 Capsule()
                     .fill(.ultraThinMaterial)
                     .overlay(Capsule().fill(Color.black.opacity(0.42)))
             }
             .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+            .layoutPriority(-1)
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 6) {
-                if activeCount > 1 && slot.isMuted {
-                    iconButton("headphones", label: "Listen only to \(slot.title)", action: onSoloAudio)
-                }
-                iconButton(
-                    slot.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
-                    label: slot.isMuted ? "Unmute \(slot.title)" : "Mute \(slot.title)",
-                    tint: slot.isMuted ? Theme.amber : .white
+            HStack(spacing: 0) {
+                PaneIconButton(
+                    systemName: slot.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                    label: audioLabel,
+                    tint: slot.isMuted ? .white.opacity(0.55) : .white
                 ) {
-                    slot.isMuted.toggle()
+                    onToggleAudio(NSEvent.modifierFlags.contains(.option))
                 }
-                iconButton(
-                    "list.bullet.rectangle",
-                    label: "Browse replacement for \(slot.title)",
-                    action: onBrowse
-                )
-                iconButton(
-                    isFocused ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
-                    label: isFocused ? "Show all four panes" : "Expand \(slot.title)",
+                if isWide && !slot.isMuted {
+                    Slider(value: volumeBinding, in: 0...1)
+                        .controlSize(.mini)
+                        .tint(.white)
+                        .frame(width: 64)
+                        .padding(.horizontal, 4)
+                        .accessibilityLabel("Volume for \(slot.title)")
+                }
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(width: 1, height: 14)
+                    .padding(.horizontal, 3)
+
+                if isWide {
+                    PaneIconButton(systemName: "list.bullet.rectangle", label: "Replace \(slot.title) with another game", action: onBrowse)
+                }
+                PaneIconButton(
+                    systemName: isFocused ? "square.grid.2x2" : "rectangle.inset.filled",
+                    label: isFocused ? "Show all four panes" : "Expand \(slot.title) in the window",
                     action: onFocus
                 )
-                iconButton("xmark", label: "Close \(slot.title)", action: onClose)
+                PaneIconButton(
+                    systemName: isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                    label: isFullScreen ? "Exit full screen" : "Full screen \(slot.title)",
+                    action: onFullScreen
+                )
+                PaneIconButton(systemName: "xmark", label: "Close \(slot.title)", action: onClose)
             }
+            .padding(2)
+            .background {
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Capsule().fill(Color.black.opacity(0.45)))
+            }
+            .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+            .fixedSize()
+            .onHover(perform: onChromeHover)
         }
-        .padding(.leading, occupiesTrafficLightCorner ? ChromeVisibility.trafficLightExclusionWidth : 12)
-        .padding(.trailing, 12)
-        .padding(.top, 7)
-        .padding(.bottom, 10)
+        .padding(.leading, occupiesTrafficLightCorner ? ChromeVisibility.trafficLightExclusionWidth : 10)
+        .padding(.trailing, 10)
+        .padding(.top, 8)
+        .padding(.bottom, 14)
         .foregroundStyle(.white)
         .background(alignment: .top) {
             LinearGradient(
-                colors: [Color.black.opacity(0.82), Color.black.opacity(0.36), .clear],
+                colors: [Color.black.opacity(0.78), Color.black.opacity(0.30), .clear],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 76)
+            .frame(height: 84)
             .allowsHitTesting(false)
         }
+        .onDisappear { onChromeHover(false) }
+    }
+
+    private var audioLabel: String {
+        if !slot.isMuted { return "Mute \(slot.title)" }
+        return activeCount > 1 ? "Listen to \(slot.title) (Option-click to mix)" : "Unmute \(slot.title)"
+    }
+
+    private var volumeBinding: Binding<Double> {
+        Binding(get: { Double(slot.volume) }, set: { slot.volume = Float($0) })
     }
 
     private var statusDotColor: Color {
@@ -818,73 +895,83 @@ private struct StreamTile: View {
         case .resolving:
             resolvingContent
         case .playing:
-            PlayerView(player: slot.player)
+            PlayerView(player: slot.player, onDoubleClick: onFullScreen)
         case .failed(let message):
             failedContent(message)
         }
     }
 
+    private var isRevealed: Bool {
+        isHovering || isTileFocused || isDropTargeted || (!isImmersive && isNextTarget)
+    }
+
     private var idleContent: some View {
         ZStack {
-            if !isImmersive {
-                RadialGradient(
-                    colors: [
-                        Theme.accent.opacity(isHovering ? 0.08 : 0.03),
-                        Color.clear
-                    ],
-                    center: .topLeading,
-                    startRadius: 8,
-                    endRadius: 280
-                )
-            } else {
+            if isImmersive {
                 Color(red: 0.016, green: 0.020, blue: 0.030)
+            } else {
+                RadialGradient(
+                    colors: [Theme.accent.opacity(isHovering ? 0.08 : (isNextTarget ? 0.05 : 0.0)), .clear],
+                    center: .top,
+                    startRadius: 8,
+                    endRadius: 300
+                )
             }
 
             VStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .fill(Color.white.opacity(isHovering ? 0.08 : 0.045))
-                        .frame(width: 46, height: 46)
-                        .overlay(
-                            Circle()
-                                .stroke(isHovering ? Theme.accent.opacity(0.45) : Color.white.opacity(0.09), lineWidth: 0.75)
+                        .fill(Color.white.opacity(isRevealed ? 0.07 : 0.04))
+                        .frame(width: 42, height: 42)
+                    Circle()
+                        .strokeBorder(
+                            isRevealed ? Theme.accent.opacity(0.5) : Color.white.opacity(0.12),
+                            style: StrokeStyle(lineWidth: 1, dash: isRevealed ? [] : [3, 3])
                         )
-                    Image(systemName: "play.tv")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(isHovering ? Theme.accent : .white.opacity(0.65))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: "plus")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(isRevealed ? Theme.accent : .white.opacity(0.45))
                 }
                 .accessibilityHidden(true)
 
                 VStack(spacing: 4) {
-                    Text("Drop a stream link")
-                        .font(.system(size: 14.5, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.92))
-                    Text("Watch page or direct HLS playlist")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.45))
+                    Text(isNextTarget ? "Add a stream" : "Empty pane")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white.opacity(isRevealed ? 0.92 : 0.55))
+                    Text("Pick a live game, paste a link, or drop one here")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.white.opacity(0.40))
+                        .multilineTextAlignment(.center)
                 }
 
                 HStack(spacing: 8) {
-                    tilePillButton("Browse games", icon: "dot.radiowaves.left.and.right", prominent: true, action: onBrowse)
-                    tilePillButton("Paste from clipboard", icon: "doc.on.clipboard", prominent: false, action: onPaste)
+                    tilePillButton("Live games", icon: "dot.radiowaves.left.and.right", prominent: true, action: onBrowse)
+                    tilePillButton("Paste link", icon: "doc.on.clipboard", prominent: false, action: onPaste)
                 }
                 .padding(.top, 2)
+                .opacity(isRevealed ? 1 : 0)
+                .allowsHitTesting(isRevealed)
             }
             .padding(16)
-            .opacity(isImmersive && (!(isHovering && !isPointerIdle) && !isTileFocused && !isDropTargeted) ? 0.24 : 1.0)
+            .opacity(isImmersive && !isRevealed ? 0.35 : 1)
         }
         .overlay(alignment: .topLeading) {
             if !isImmersive {
-                HStack(spacing: 6) {
-                    Text(String(format: "0%d", slotIndex + 1))
+                HStack(spacing: 7) {
+                    Text("\(slotIndex + 1)")
                         .font(.system(size: 10.5, weight: .bold).monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.42))
-                    Text(slotIndex == 0 ? "PRIMARY AUDIO" : "AUTO-MUTED")
-                        .font(.system(size: 9.5, weight: .semibold))
-                        .tracking(0.5)
-                        .foregroundStyle(slotIndex == 0 ? Theme.accent.opacity(0.75) : .white.opacity(0.26))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .frame(width: 18, height: 18)
+                        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    if isNextTarget {
+                        Text("NEXT")
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .tracking(0.6)
+                            .foregroundStyle(Theme.accent.opacity(0.85))
+                    }
                 }
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 12)
                 .padding(.top, 12)
                 .accessibilityHidden(true)
             }
@@ -919,11 +1006,8 @@ private struct StreamTile: View {
                     .foregroundStyle(.white.opacity(0.95))
                     .lineLimit(1)
                 Text("Finding the live feed…")
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(Theme.accent.opacity(0.9))
-                Text("Checking the available sources")
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.50))
             }
 
             Button("Cancel", action: onClose)
@@ -936,7 +1020,7 @@ private struct StreamTile: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.canvas)
+        .background(isImmersive ? Color(red: 0.016, green: 0.020, blue: 0.030) : Theme.canvas)
         .accessibilityElement(children: .contain)
     }
 
@@ -958,22 +1042,23 @@ private struct StreamTile: View {
                     .font(.system(size: 14.5, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.95))
                 Text(message)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(.white.opacity(0.58))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.55))
                     .multilineTextAlignment(.center)
+                    .lineLimit(3)
                     .frame(maxWidth: 360)
             }
 
             HStack(spacing: 8) {
                 tilePillButton("Try again", icon: "arrow.clockwise", prominent: true, action: slot.retry)
-                tilePillButton("Browse games", icon: "list.bullet.rectangle", prominent: false, action: onBrowse)
-                tilePillButton("Use another link", icon: "xmark", prominent: false, action: onClose)
+                tilePillButton("Live games", icon: "list.bullet.rectangle", prominent: false, action: onBrowse)
+                tilePillButton("Close", icon: "xmark", prominent: false, action: onClose)
             }
             .padding(.top, 2)
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.canvas)
+        .background(isImmersive ? Color(red: 0.016, green: 0.020, blue: 0.030) : Theme.canvas)
         .accessibilityElement(children: .contain)
     }
 
@@ -988,7 +1073,7 @@ private struct StreamTile: View {
                     .foregroundStyle(.white.opacity(0.9))
             }
             .padding(.horizontal, 11)
-            .frame(height: 29)
+            .frame(height: 28)
             .background {
                 Capsule()
                     .fill(prominent ? Theme.accent.opacity(0.13) : Color.white.opacity(0.06))
@@ -997,33 +1082,204 @@ private struct StreamTile: View {
                 Capsule()
                     .stroke(prominent ? Theme.accent.opacity(0.34) : Color.white.opacity(0.10), lineWidth: 0.75)
             }
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
     }
+}
 
-    private func iconButton(
-        _ systemName: String,
-        label: String,
-        tint: Color = .white,
-        action: @escaping () -> Void
-    ) -> some View {
+// MARK: - Chrome Components
+
+private struct LiveDot: View {
+    var size: CGFloat = 6
+
+    var body: some View {
+        Circle()
+            .fill(Theme.live)
+            .frame(width: size, height: size)
+            .shadow(color: Theme.live.opacity(0.7), radius: 4)
+            .accessibilityHidden(true)
+    }
+}
+
+private struct KeyCap: View {
+    let key: String
+
+    init(_ key: String) { self.key = key }
+
+    var body: some View {
+        Text(key)
+            .font(.system(size: 10.5, weight: .semibold).monospaced())
+            .foregroundStyle(.white.opacity(0.62))
+            .padding(.horizontal, 5.5)
+            .padding(.vertical, 1.5)
+            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(Color.white.opacity(0.09), lineWidth: 0.5))
+    }
+}
+
+private struct PaneIconButton: View {
+    let systemName: String
+    let label: String
+    var tint: Color = .white
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 12.5, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(tint)
-                .frame(width: 30, height: 30)
-                .background {
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .overlay(Circle().fill(Color.black.opacity(0.45)))
-                }
-                .overlay(Circle().stroke(Color.white.opacity(0.14), lineWidth: 0.5))
-                .contentShape(Circle())
+                .frame(width: 30, height: 28)
+                .background(Capsule().fill(Color.white.opacity(isHovered ? 0.16 : 0)))
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
         .help(label)
         .accessibilityLabel(label)
+    }
+}
+
+private struct DockIconButton: View {
+    let systemName: String
+    let label: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(isSelected ? Theme.accent : .white.opacity(0.75))
+                .frame(width: 30, height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(isSelected ? Theme.accent.opacity(0.16) : Color.white.opacity(isHovered ? 0.10 : 0))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help(label)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// Dock chip for one pane: shows whether it plays, has the sound, or is expanded.
+private struct DockPaneChip: View {
+    @ObservedObject var slot: StreamSlot
+    let index: Int
+    let isFocused: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    private var isAudible: Bool { !slot.isEmpty && !slot.isMuted }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Text("\(index + 1)")
+                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                if isAudible {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 7.5, weight: .bold))
+                }
+            }
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 8)
+            .frame(minWidth: 26)
+            .frame(height: 26)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(background)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(slot.isEmpty ? Color.white.opacity(0.10) : .clear, style: StrokeStyle(lineWidth: 0.75, dash: [2, 2]))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(slot.isEmpty)
+        .onHover { isHovered = $0 }
+        .help(slot.isEmpty ? "Pane \(index + 1) is empty" : (isFocused ? "Show all four panes" : "Expand \(slot.title) (⌘\(index + 1))"))
+        .accessibilityLabel(slot.isEmpty ? "Pane \(index + 1), empty" : "Pane \(index + 1), \(slot.title)\(isAudible ? ", playing sound" : "")")
+        .accessibilityAddTraits(isFocused ? .isSelected : [])
+    }
+
+    private var foreground: Color {
+        if slot.isEmpty { return .white.opacity(0.28) }
+        if isFocused { return Theme.accent }
+        return isAudible ? .white : .white.opacity(0.70)
+    }
+
+    private var background: Color {
+        if isFocused { return Theme.accent.opacity(0.18) }
+        if slot.isEmpty { return .clear }
+        return Color.white.opacity(isHovered ? 0.16 : 0.08)
+    }
+}
+
+private struct DockTextButton<Icon: View>: View {
+    let title: String
+    let help: String
+    let action: () -> Void
+    @ViewBuilder let icon: () -> Icon
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                icon()
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundStyle(.white.opacity(0.92))
+            .padding(.horizontal, 11)
+            .frame(height: 26)
+            .background(Capsule().fill(Color.white.opacity(isHovered ? 0.12 : 0)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help(help)
+        .accessibilityLabel(title)
+    }
+}
+
+private struct PalettePillButton: View {
+    let title: String
+    let systemName: String
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: systemName)
+                    .font(.system(size: 10.5, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 11.5, weight: .medium))
+            }
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.horizontal, 10)
+            .frame(height: 26)
+            .background(Capsule().fill(Color.white.opacity(isHovered ? 0.12 : 0.06)))
+            .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 0.75))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .accessibilityLabel(title)
     }
 }
 
