@@ -35,7 +35,7 @@ Add or update XCTest cases under `Tests/` for behavior changes. Name suites `*Te
 - `Resolver.swift` owns page/embed parsing and playlist validation. Accept only HTTP(S), cap resolution work, and propagate cancellation.
 - `HLSProxy.swift` owns upstream headers and rewrites every playlist, key, initialization segment, and media segment to a loopback URL. Preserve token validation, Host validation, byte ranges, response limits, and connection cancellation. AVPlayer requires local playlist URLs and conventional media extensions; upstream `.txt` segments are intentional.
 - `StreamStore.swift` owns exactly four independent player lifecycles. Guard asynchronous callbacks with the slot generation so close, replace, and retry cannot affect a newer player. Preserve audio defaults, failure recovery, and input on rejected submissions.
-- `ContentView.swift` and `PlayerView.swift` keep video borderless. Reveal controls on hover or keyboard focus without changing the grid layout. Keep the URL bar keyboard-accessible with Command-L.
+- `ContentView.swift` and `PlayerView.swift` keep video borderless. Reveal controls on hover or keyboard focus without changing the grid layout. Pane controls (Browse games, Paste from clipboard, drag and drop) are the only way to add streams once playback starts; there is no top-edge URL bar.
 
 ## Validation
 
