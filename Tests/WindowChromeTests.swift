@@ -68,46 +68,9 @@ final class WindowChromeTests: XCTestCase {
         )
     }
 
-    func testAutoHideRequiresActivePlaybackAndNoOpenOverlayOrTopHover() {
-        XCTAssertTrue(
-            ChromeVisibility.canAutoHidePointer(
-                isPlayingAny: true,
-                isLocationVisible: false,
-                isSheetPresented: false,
-                isNearTopZone: false
-            )
-        )
-        XCTAssertFalse(
-            ChromeVisibility.canAutoHidePointer(
-                isPlayingAny: false,
-                isLocationVisible: false,
-                isSheetPresented: false,
-                isNearTopZone: false
-            )
-        )
-        XCTAssertFalse(
-            ChromeVisibility.canAutoHidePointer(
-                isPlayingAny: true,
-                isLocationVisible: true,
-                isSheetPresented: false,
-                isNearTopZone: false
-            )
-        )
-        XCTAssertFalse(
-            ChromeVisibility.canAutoHidePointer(
-                isPlayingAny: true,
-                isLocationVisible: false,
-                isSheetPresented: true,
-                isNearTopZone: false
-            )
-        )
-        XCTAssertFalse(
-            ChromeVisibility.canAutoHidePointer(
-                isPlayingAny: true,
-                isLocationVisible: false,
-                isSheetPresented: false,
-                isNearTopZone: true
-            )
-        )
+    func testAutoHideRequiresActivePlaybackAndNoSheet() {
+        XCTAssertTrue(ChromeVisibility.canAutoHidePointer(isPlayingAny: true, isSheetPresented: false))
+        XCTAssertFalse(ChromeVisibility.canAutoHidePointer(isPlayingAny: false, isSheetPresented: false))
+        XCTAssertFalse(ChromeVisibility.canAutoHidePointer(isPlayingAny: true, isSheetPresented: true))
     }
 }

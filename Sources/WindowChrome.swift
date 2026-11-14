@@ -36,8 +36,6 @@ enum Theme {
 /// Pure rules for MPV-style window chrome visibility.
 enum ChromeVisibility {
     static let idleHideInterval: TimeInterval = 2.4
-    static let topBarRevealHeight: CGFloat = 12
-    static let topComfortZoneHeight: CGFloat = 58
     static let trafficLightExclusionWidth: CGFloat = 86
 
     static func showsTrafficLights(
@@ -54,11 +52,9 @@ enum ChromeVisibility {
 
     static func canAutoHidePointer(
         isPlayingAny: Bool,
-        isLocationVisible: Bool,
-        isSheetPresented: Bool,
-        isNearTopZone: Bool
+        isSheetPresented: Bool
     ) -> Bool {
-        isPlayingAny && !isLocationVisible && !isSheetPresented && !isNearTopZone
+        isPlayingAny && !isSheetPresented
     }
 }
 
@@ -96,14 +92,11 @@ struct BrandQuadMark: View {
 /// hover-activated traffic lights, zero system gray bar, and background window dragging.
 struct WindowChromeConfigurator: NSViewRepresentable {
     @Binding var isWindowHovered: Bool
-    @Binding var isNearTopZone: Bool
     @Binding var isPointerIdle: Bool
     let isImmersive: Bool
     let isPlayingAny: Bool
-    let isLocationVisible: Bool
     let isSheetPresented: Bool
     let reduceMotion: Bool
-    let onTopEdgeHover: () -> Void
 
     func makeNSView(context: Context) -> WindowChromeTrackingView {
         let view = WindowChromeTrackingView()
@@ -163,9 +156,7 @@ struct WindowChromeConfigurator: NSViewRepresentable {
         func update(from newParent: WindowChromeConfigurator, window: NSWindow?) {
             let wasCanIdle = ChromeVisibility.canAutoHidePointer(
                 isPlayingAny: parent.isPlayingAny,
-                isLocationVisible: parent.isLocationVisible,
-                isSheetPresented: parent.isSheetPresented,
-                isNearTopZone: parent.isNearTopZone
+                isSheetPresented: parent.isSheetPresented
             )
             parent = newParent
             guard let window else { return }
@@ -178,9 +169,7 @@ struct WindowChromeConfigurator: NSViewRepresentable {
             configureWindowAppearance(window)
             let nowCanIdle = ChromeVisibility.canAutoHidePointer(
                 isPlayingAny: parent.isPlayingAny,
-                isLocationVisible: parent.isLocationVisible,
-                isSheetPresented: parent.isSheetPresented,
-                isNearTopZone: parent.isNearTopZone
+                isSheetPresented: parent.isSheetPresented
             )
             if !nowCanIdle {
                 cancelIdleTimer()
@@ -343,18 +332,8 @@ struct WindowChromeConfigurator: NSViewRepresentable {
             }
             lastScreenMouseLocation = screenMouse
 
-            let topDistance = windowRect.height - point.y
-            let nearTop = inside && topDistance >= 0 && topDistance <= ChromeVisibility.topComfortZoneHeight
-            let atTopRevealEdge = inside
-                && topDistance >= 0
-                && topDistance <= ChromeVisibility.topBarRevealHeight
-                && point.x > ChromeVisibility.trafficLightExclusionWidth
-
             if parent.isWindowHovered != inside {
                 parent.isWindowHovered = inside
-            }
-            if parent.isNearTopZone != nearTop {
-                parent.isNearTopZone = nearTop
             }
 
             updateHoverPollTimer(active: inside)
@@ -365,14 +344,9 @@ struct WindowChromeConfigurator: NSViewRepresentable {
             } else if pointerMoved {
                 if parent.isPointerIdle { parent.isPointerIdle = false }
                 scheduleIdleTimer()
-                if atTopRevealEdge && parent.isImmersive && !parent.isLocationVisible && !parent.isSheetPresented {
-                    parent.onTopEdgeHover()
-                }
             } else if idleWorkItem == nil && !parent.isPointerIdle && ChromeVisibility.canAutoHidePointer(
                 isPlayingAny: parent.isPlayingAny,
-                isLocationVisible: parent.isLocationVisible,
-                isSheetPresented: parent.isSheetPresented,
-                isNearTopZone: nearTop
+                isSheetPresented: parent.isSheetPresented
             ) {
                 scheduleIdleTimer()
             }
@@ -408,9 +382,7 @@ struct WindowChromeConfigurator: NSViewRepresentable {
             cancelIdleTimer()
             guard ChromeVisibility.canAutoHidePointer(
                 isPlayingAny: parent.isPlayingAny,
-                isLocationVisible: parent.isLocationVisible,
-                isSheetPresented: parent.isSheetPresented,
-                isNearTopZone: parent.isNearTopZone
+                isSheetPresented: parent.isSheetPresented
             ) else { return }
 
             let item = DispatchWorkItem { [weak self] in
@@ -419,9 +391,7 @@ struct WindowChromeConfigurator: NSViewRepresentable {
                     self.idleWorkItem = nil
                     guard ChromeVisibility.canAutoHidePointer(
                         isPlayingAny: self.parent.isPlayingAny,
-                        isLocationVisible: self.parent.isLocationVisible,
-                        isSheetPresented: self.parent.isSheetPresented,
-                        isNearTopZone: self.parent.isNearTopZone
+                        isSheetPresented: self.parent.isSheetPresented
                     ) else { return }
                     self.parent.isPointerIdle = true
                     self.applyTrafficLightsVisibility(in: window, animated: !self.parent.reduceMotion)

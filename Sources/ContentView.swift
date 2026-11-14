@@ -2,7 +2,6 @@ import AppKit
 import SwiftUI
 
 extension Notification.Name {
-    static let showStreamLocation = Notification.Name("com.nik.crackstreams.show-location")
     static let showStreamBrowser = Notification.Name("com.nik.crackstreams.show-browser")
 }
 
@@ -15,9 +14,7 @@ struct ContentView: View {
     @ObservedObject var store: StreamStore
     @StateObject private var browser = StreamBrowser()
     @State private var browserTarget: BrowserTarget?
-    @State private var isLocationVisible = false
     @State private var isWindowHovered = false
-    @State private var isNearTopZone = false
     @State private var isPointerIdle = false
     @FocusState private var isLocationFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -45,18 +42,14 @@ struct ContentView: View {
         .background(
             WindowChromeConfigurator(
                 isWindowHovered: $isWindowHovered,
-                isNearTopZone: $isNearTopZone,
                 isPointerIdle: $isPointerIdle,
                 isImmersive: isImmersive,
                 isPlayingAny: isPlayingAny,
-                isLocationVisible: isLocationVisible,
                 isSheetPresented: browserTarget != nil,
-                reduceMotion: reduceMotion,
-                onTopEdgeHover: showLocation
+                reduceMotion: reduceMotion
             )
         )
         .onDrop(of: [.url, .text], isTargeted: nil) { store.handleDrop($0) }
-        .onReceive(NotificationCenter.default.publisher(for: .showStreamLocation)) { _ in showLocation() }
         .onReceive(NotificationCenter.default.publisher(for: .showStreamBrowser)) { _ in openBrowser(into: nil) }
         .sheet(item: $browserTarget) { target in
             BrowserView(
@@ -68,27 +61,17 @@ struct ContentView: View {
             }
         }
         .onChange(of: isImmersive) {
-            if isImmersive && !isLocationVisible {
+            if isImmersive {
                 DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
             }
         }
         .onChange(of: browserTarget?.id) {
-            if browserTarget == nil && isImmersive && !isLocationVisible {
+            if browserTarget == nil && isImmersive {
                 DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
             }
         }
-        .background {
-            Button("") { isLocationVisible ? hideLocation() : showLocation() }
-                .keyboardShortcut("l", modifiers: .command)
-                .hidden()
-            Button("") { hideLocation() }
-                .keyboardShortcut(.escape, modifiers: [])
-                .hidden()
-        }
-        .animation(reduceMotion ? .none : .easeOut(duration: 0.2), value: isLocationVisible)
         .animation(reduceMotion ? .none : .easeOut(duration: 0.22), value: isImmersive)
         .animation(reduceMotion ? .none : .easeOut(duration: 0.18), value: isWindowHovered)
-        .animation(reduceMotion ? .none : .easeOut(duration: 0.18), value: isNearTopZone)
         .animation(reduceMotion ? .none : .easeOut(duration: 0.22), value: isPointerIdle)
     }
 
@@ -232,8 +215,6 @@ struct ContentView: View {
                 .background(Theme.amber.opacity(0.12), in: Capsule())
                 .overlay(Capsule().stroke(Theme.amber.opacity(0.28), lineWidth: 0.75))
             } else {
-                shortcutHint("⌘L", "URL bar")
-                Text("·").foregroundStyle(.quaternary)
                 shortcutHint("⌘B", "Live directory")
                 Text("·").foregroundStyle(.quaternary)
                 Text("Drag any watch or .m3u8 link onto a viewport")
@@ -271,176 +252,10 @@ struct ContentView: View {
 
     @ViewBuilder
     private var immersiveChrome: some View {
-        // Top-edge reveal sensor outside the traffic light corner.
-        HStack(spacing: 0) {
-            Color.clear
-                .frame(width: ChromeVisibility.trafficLightExclusionWidth, height: 12)
-                .allowsHitTesting(false)
-            Color.clear
-                .frame(maxWidth: .infinity)
-                .frame(height: 12)
-                .contentShape(Rectangle())
-                .onHover { hovering in
-                    if hovering { showLocation() }
-                }
-                .accessibilityHidden(true)
-        }
-
-        if isLocationVisible {
-            floatingCommandBar
-                .padding(.leading, ChromeVisibility.trafficLightExclusionWidth)
-                .padding(.trailing, 14)
-                .padding(.top, 8)
-                .transition(.move(edge: .top).combined(with: .opacity))
-        } else if isWindowHovered && isNearTopZone && !isPointerIdle && browserTarget == nil {
-            floatingTopQuickPill
-                .padding(.top, 8)
-                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
-        }
-
         if let message = store.message {
             messageBanner(message)
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, 20)
-        }
-    }
-
-    private var floatingTopQuickPill: some View {
-        HStack(spacing: 2) {
-            Button(action: showLocation) {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 10.5, weight: .bold))
-                        .foregroundStyle(Theme.accent)
-                    Text("Add Stream")
-                        .font(.system(size: 11.5, weight: .medium))
-                }
-                .padding(.horizontal, 10)
-                .frame(height: 26)
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Show stream URL bar")
-
-            Rectangle()
-                .fill(Color.white.opacity(0.12))
-                .frame(width: 1, height: 12)
-
-            Button { openBrowser(into: nil) } label: {
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(Theme.live)
-                        .frame(width: 5.5, height: 5.5)
-                    Text("Browse")
-                        .font(.system(size: 11.5, weight: .medium))
-                }
-                .padding(.horizontal, 10)
-                .frame(height: 26)
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Browse")
-
-            Text("\(activeCount)/4")
-                .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.55))
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(Color.white.opacity(0.08), in: Capsule())
-                .padding(.trailing, 3)
-        }
-        .foregroundStyle(.white.opacity(0.92))
-        .padding(3)
-        .background {
-            Capsule()
-                .fill(.ultraThinMaterial)
-                .overlay(Capsule().fill(Color.black.opacity(0.45)))
-        }
-        .overlay(Capsule().stroke(Theme.glassBorder(), lineWidth: 0.75))
-        .shadow(color: .black.opacity(0.45), radius: 14, y: 6)
-    }
-
-    private var floatingCommandBar: some View {
-        HStack(spacing: 8) {
-            BrandQuadMark(size: 15)
-                .padding(.leading, 4)
-
-            Text("\(activeCount)/4")
-                .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.62))
-                .padding(.horizontal, 6.5)
-                .padding(.vertical, 3)
-                .background(Color.white.opacity(0.08), in: Capsule())
-                .accessibilityLabel("\(activeCount) of 4 panes occupied")
-
-            urlInputField(height: 34)
-
-            Button { openBrowser(into: nil) } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "list.bullet.rectangle")
-                        .font(.system(size: 11.5, weight: .medium))
-                    Text("Browse")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .foregroundStyle(.white.opacity(0.92))
-                .padding(.horizontal, 11)
-                .frame(height: 34)
-                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Color.white.opacity(0.12), lineWidth: 0.75))
-            }
-            .buttonStyle(.plain)
-            .help("Browse games on \(browser.home.host ?? "the stream site") (⌘B)")
-            .accessibilityLabel("Browse")
-
-            Button(action: submitLocation) {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .bold))
-                    Text("Add stream")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(trimmedInput.isEmpty ? Color.white.opacity(0.38) : Color.white)
-                .padding(.horizontal, 12)
-                .frame(height: 34)
-                .background {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(trimmedInput.isEmpty ? AnyShapeStyle(Color.white.opacity(0.06)) : AnyShapeStyle(Theme.accentGradient))
-                }
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut(.defaultAction)
-            .disabled(trimmedInput.isEmpty)
-            .accessibilityLabel("Add stream")
-
-            Button(action: hideLocation) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.65))
-                    .frame(width: 28, height: 28)
-                    .background(Color.white.opacity(0.06), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .help("Hide stream bar (Esc)")
-            .accessibilityLabel("Hide stream URL bar")
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: 860)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Theme.canvas.opacity(0.76))
-                )
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Theme.glassBorder(), lineWidth: 0.85)
-        )
-        .shadow(color: .black.opacity(0.5), radius: 22, y: 10)
-        .onHover { hovering in
-            if !hovering && !isLocationFocused { hideLocation() }
         }
     }
 
@@ -511,7 +326,6 @@ struct ContentView: View {
                         isImmersive: isImmersive,
                         isFocused: isFocused,
                         occupiesTrafficLightCorner: isImmersive && (isFocused || slotIndex == 0),
-                        isTopBarObscured: isLocationVisible && (isFocused || slotIndex < 2),
                         activeCount: activeCount,
                         isWindowHovered: isWindowHovered,
                         isPointerIdle: isPointerIdle,
@@ -570,23 +384,11 @@ struct ContentView: View {
         return store.slots
     }
 
-    private func showLocation() {
-        isLocationVisible = true
-        isPointerIdle = false
-        DispatchQueue.main.async { isLocationFocused = true }
-    }
-
-    private func hideLocation() {
-        isLocationFocused = false
-        isLocationVisible = false
-    }
-
     private func submitLocation() {
-        if store.addFromInput() && isImmersive { hideLocation() }
+        store.addFromInput()
     }
 
     private func openBrowser(into slot: StreamSlot?) {
-        if isImmersive { hideLocation() }
         browserTarget = BrowserTarget(slot: slot)
     }
 
@@ -615,7 +417,6 @@ private struct StreamTile: View {
     let isImmersive: Bool
     let isFocused: Bool
     let occupiesTrafficLightCorner: Bool
-    let isTopBarObscured: Bool
     let activeCount: Int
     let isWindowHovered: Bool
     let isPointerIdle: Bool
@@ -633,7 +434,7 @@ private struct StreamTile: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var showsControls: Bool {
-        !slot.isEmpty && !isTopBarObscured && ((isHovering && isWindowHovered && !isPointerIdle) || isTileFocused)
+        !slot.isEmpty && ((isHovering && isWindowHovered && !isPointerIdle) || isTileFocused)
     }
 
     private var isPlaying: Bool {
