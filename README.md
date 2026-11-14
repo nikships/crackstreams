@@ -25,7 +25,7 @@ Zero ads. Zero popups. Zero browser overhead.
 
 Crackstreams is a native SwiftUI and `AVPlayer` client for macOS 14+ that resolves watch pages and direct `.m3u8` playlists into up to four simultaneous live video panes. It strips away browser tabs, ad overlays, fake player prompts, and chat sidebars by resolving the underlying HLS feed and playing it through a token-protected loopback relay.
 
-Pick games from the built-in Live Sports Directory (`⌘B`), drag a URL onto any pane, or paste a stream link from the clipboard into an empty pane. No browser, streamlink, or mpv installation is required.
+Pick games from the built-in Live Sports Directory (`⌘B`), drag a URL onto any pane, or paste a stream link into the Add Stream palette (`⌘L`). No browser, streamlink, or mpv installation is required.
 
 <div align="center">
   <img src="https://github.com/user-attachments/assets/418aebe3-e22d-484a-8c64-a2ffbee4c8b2" alt="Cluttered browser streaming versus Crackstreams native four-pane macOS player" width="900" />
@@ -33,11 +33,11 @@ Pick games from the built-in Live Sports Directory (`⌘B`), drag a URL onto any
 
 ## Features
 
-- **Borderless MPV-style window**: Runs edge-to-edge without a gray system title bar. Traffic lights and overlays appear only on hover or keyboard focus, auto-hide during idle playback, and let you drag the window by any background or video surface.
-- **Four-pane multiview**: Run 1 to 4 independent `AVPlayer` feeds simultaneously, expand any pane full-window (`⌘1`–`⌘4`), or jump back to the 2×2 grid (`⌘0`).
-- **Smart audio & one-click solo**: Pane 1 starts audible while additional panes start muted. Click the headphones button on any pane or press `⌥⌘1`–`⌥⌘4` to switch audio exclusively to that game.
+- **Borderless MPV-style window**: Runs edge-to-edge without a gray system title bar. Each pane shows its own controls along its top edge on hover or keyboard focus, a small dock at the bottom switches panes and adds streams, and everything auto-hides during idle playback. Drag the window by any background or video surface.
+- **Four-pane multiview**: Run 1 to 4 independent `AVPlayer` feeds simultaneously, expand any pane full-window (`⌘1`–`⌘4`), take one pane full screen with its full-screen button or a double-click on the video, or jump back to the 2×2 grid (`⌘0` or `Esc`).
+- **Smart audio & one-click solo**: Pane 1 starts audible while additional panes start muted. Click a muted pane's speaker (or press `⌥⌘1`–`⌥⌘4`) to switch the sound to that game, or Option-click it to mix it with what is already playing. Audible panes get a per-pane volume slider.
 - **Built-in Live Sports Directory (`⌘B`)**: Browse live, starting-soon, and 24/7 listings from `crackstreams.mx` with start times converted to your local time zone. Only same-site `/league/` and `/stream/` links are shown.
-- **Drag-and-drop & paste**: Drop a link onto any pane to play or replace it, or paste straight from the clipboard into an empty pane.
+- **Add Stream palette & drag-and-drop (`⌘L`)**: Open the palette with `⌘L` or the dock's Add button, drop a link onto any pane to play or replace it, or paste straight from the clipboard.
 - **Resilient & secure playback**: Temporary stalls display a non-destructive `Reconnecting…` pill instead of tearing down the player, and failures include an inline retry. Upstream `Referer` headers and playlist rewriting run inside a loopback-only relay gated by a random per-launch token and `Host` validation.
 - **Universal & auto-updating**: Ships as a signed, notarized Apple silicon + Intel DMG with Sparkle EdDSA in-app updates.
 
@@ -45,9 +45,11 @@ Pick games from the built-in Live Sports Directory (`⌘B`), drag a URL onto any
 
 | Shortcut | Action |
 |---|---|
+| `⌘L` | Toggle the Add Stream palette (`Esc` to hide) |
 | `⌘B` | Open Live Sports Directory |
 | `⌘1` – `⌘4` | Expand or restore pane 1–4 |
-| `⌘0` | Return to all four panes |
+| `⌘0` / `Esc` | Return to all four panes (and leave pane full screen) |
+| Double-click video | Toggle full screen for that pane |
 | `⌥⌘1` – `⌥⌘4` | Solo audio on pane 1–4 |
 
 ## Quick Start
@@ -94,8 +96,8 @@ flowchart LR
 - `Sources/Resolver.swift`: Extracts embeds and validates HTTP(S) HLS playlists with bounded payload sizes and task cancellation.
 - `Sources/HLSProxy.swift`: Loopback-only HTTP relay on `127.0.0.1` that injects upstream `Referer` headers, supports byte ranges, and rewrites playlists, keys, and segments to local URLs protected by a per-launch token and `Host` check.
 - `Sources/StreamStore.swift`: Manages four independent `AVPlayer` slots with generation guards, mute/solo state, buffering indicators, and inline retry.
-- `Sources/ContentView.swift` & `Sources/PlayerView.swift`: Render the borderless 2×2 grid, hover/focus controls, and drag-and-drop targets.
-- `Sources/WindowChrome.swift`: Configures the chromeless `NSWindow`, hover-only traffic lights, idle cursor auto-hide, and video-surface window dragging.
+- `Sources/ContentView.swift` & `Sources/PlayerView.swift`: Render the borderless 2×2 grid, per-pane hover/focus controls, the multiview dock, the Add Stream palette, and drag-and-drop targets.
+- `Sources/WindowChrome.swift`: Configures the chromeless `NSWindow`, hover-only traffic lights, idle cursor auto-hide, video-surface window dragging, and double-click-to-full-screen.
 - `Sources/BrowserView.swift`: Renders the Live Sports Directory modal sheet.
 - `Sources/Updater.swift`: Integrates Sparkle automatic updates (disabled in debug builds).
 
@@ -110,7 +112,7 @@ crackstreams/
 ├── Assets/
 │   ├── AppIcon.iconset/
 │   ├── AppIcon.icns
-│   └── AppIcon.svg
+│   └── AppIcon.png
 ├── Config/
 │   └── Entitlements.plist
 ├── Scripts/

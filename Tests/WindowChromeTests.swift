@@ -68,9 +68,27 @@ final class WindowChromeTests: XCTestCase {
         )
     }
 
-    func testAutoHideRequiresActivePlaybackAndNoSheet() {
-        XCTAssertTrue(ChromeVisibility.canAutoHidePointer(isPlayingAny: true, isSheetPresented: false))
-        XCTAssertFalse(ChromeVisibility.canAutoHidePointer(isPlayingAny: false, isSheetPresented: false))
-        XCTAssertFalse(ChromeVisibility.canAutoHidePointer(isPlayingAny: true, isSheetPresented: true))
+    func testChromeHoverKeepsPointerAwake() {
+        XCTAssertFalse(
+            ChromeVisibility.canAutoHidePointer(
+                isPlayingAny: true,
+                isLocationVisible: false,
+                isSheetPresented: false,
+                isNearTopZone: false,
+                isPointerOverChrome: true
+            )
+        )
+    }
+
+    func testPaneIsFullScreenOnlyWhenFocusedInFullScreenWindow() {
+        XCTAssertTrue(ChromeVisibility.isPaneFullScreen(isFocused: true, isWindowFullScreen: true))
+        XCTAssertFalse(ChromeVisibility.isPaneFullScreen(isFocused: true, isWindowFullScreen: false))
+        XCTAssertFalse(ChromeVisibility.isPaneFullScreen(isFocused: false, isWindowFullScreen: true))
+    }
+
+    func testCollapsingLeavesUserEnteredFullScreenAlone() {
+        XCTAssertTrue(ChromeVisibility.shouldExitFullScreenOnCollapse(enteredForPane: true, isWindowFullScreen: true))
+        XCTAssertFalse(ChromeVisibility.shouldExitFullScreenOnCollapse(enteredForPane: false, isWindowFullScreen: true))
+        XCTAssertFalse(ChromeVisibility.shouldExitFullScreenOnCollapse(enteredForPane: true, isWindowFullScreen: false))
     }
 }

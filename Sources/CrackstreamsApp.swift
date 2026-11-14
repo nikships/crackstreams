@@ -19,6 +19,10 @@ struct CrackstreamsApp: App {
                 CheckForUpdatesButton(updater: updater)
             }
             CommandGroup(replacing: .newItem) {
+                Button("New Stream…") {
+                    NotificationCenter.default.post(name: .showStreamLocation, object: nil)
+                }
+                .keyboardShortcut("l", modifiers: .command)
                 Button("Browse Streams…") {
                     NotificationCenter.default.post(name: .showStreamBrowser, object: nil)
                 }
