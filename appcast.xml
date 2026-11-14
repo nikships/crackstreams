@@ -6,6 +6,18 @@
     <description>Releases of the Crackstreams macOS app</description>
     <language>en</language>
     <item>
+      <title>Version 1.1.4</title>
+      <sparkle:version>22</sparkle:version>
+      <sparkle:shortVersionString>1.1.4</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <sparkle:fullReleaseNotesLink>https://github.com/nikships/crackstreams/releases/tag/v1.1.4</sparkle:fullReleaseNotesLink>
+      <pubDate>Sat, 14 Nov 2026 02:12:33 +0000</pubDate>
+      <enclosure url="https://github.com/nikships/crackstreams/releases/download/v1.1.4/Crackstreams-1.1.4-universal.zip"
+                 type="application/octet-stream"
+                 sparkle:edSignature="CoUtrtpRyFO9wrDByM5S/6MI8dpe1SwpygaYkfXDUbfQnKNt4O+0J3QxeH2yFhyMRL8WvnE7NJvrzOyT4MF1Cg=="
+                 length="4149884"/>
+    </item>
+    <item>
       <title>Version 1.1.3</title>
       <sparkle:version>16</sparkle:version>
       <sparkle:shortVersionString>1.1.3</sparkle:shortVersionString>
