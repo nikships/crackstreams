@@ -281,14 +281,6 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear stream URL")
-            } else if !isImmersive && !isLocationFocused {
-                Text("⌘L")
-                    .font(.system(size: 10.5, weight: .medium).monospaced())
-                    .foregroundStyle(.white.opacity(0.32))
-                    .padding(.horizontal, 5.5)
-                    .padding(.vertical, 2)
-                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    .accessibilityHidden(true)
             }
         }
         .padding(.horizontal, 12)

@@ -102,9 +102,11 @@ enum Resolver {
             guard let origin = Net.origin(of: embed) else { continue }
             // Some embeds only expose DIRECT_STREAM_URL when the Referer is the watch site, not their own origin.
             // The playlist itself still needs the embed's origin.
-            for embedReferer in [origin, Net.origin(of: input)] {
-                guard let embedReferer,
-                      let (html, code) = try? await Net.text(embed, referer: embedReferer),
+            var embedReferers = [origin]
+            if let watchOrigin = Net.origin(of: input), watchOrigin != origin { embedReferers.append(watchOrigin) }
+            for embedReferer in embedReferers {
+                try Task.checkCancellation()
+                guard let (html, code) = try? await Net.text(embed, referer: embedReferer),
                       (200..<300).contains(code),
                       let candidate = playlistURL(in: html, base: embed) else { continue }
                 if (try? await isPlaylist(candidate, referer: origin)) == true {
