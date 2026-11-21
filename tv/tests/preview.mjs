@@ -53,7 +53,7 @@ createServer(async (req, res) => {
         }
         if (url.pathname === "/api/play") {
             const path = source.includes("unavailable") ? "/broken.m3u8" : "/ok.m3u8";
-            return res.end(JSON.stringify({ url: origin + path, title: "Direct link" }));
+            return res.end(JSON.stringify({ url: origin + path }));
         }
         res.statusCode = 404;
         return res.end();

@@ -43,7 +43,7 @@ test("TV loopback URLs sign playlists, keys, maps, and nonstandard segments", ()
     assert.deepEqual(urls.map(u => u.pathname), ["/stream.m3u8", "/key.bin", "/init.mp4", "/segment.ts"]);
     for (const url of urls) {
         const params = url.searchParams;
-        assert.equal(url.origin, "http://127.0.0.1:48636");
+        assert.equal(url.origin, "http://127.0.0.1:48638");
         assert.equal(params.get("t"), service.sign(url.pathname, params.get("u"), params.get("r")));
         assert.notEqual(params.get("t"), service.sign("/changed", params.get("u"), params.get("r")));
     }
@@ -65,4 +65,43 @@ test("local media targets and invalid byte ranges are rejected", () => {
     assert.equal(service.slice(data, "bytes=9-").data.toString(), "9");
     assert.equal(service.slice(data, "bytes=10-"), null);
     assert.equal(service.slice(data, "bytes=1-2,4-5"), null);
+});
+
+test("a web-only game resolves through a same-day alternate with nested players", async () => {
+    const watch = "https://crackstreams.mx/stream/red-team-vs-blue-team";
+    const outdated = "https://hdcrackstreams.live/custom-stream/ncaaf-red-team-at-blue-team";
+    const verified = "https://hdcrackstreams.live/custom-stream/red-team-at-blue-team";
+    const urls = ["https://first.example/player", "https://middle.example/event", "https://final.example/embed"];
+    const playlist = "https://cdn.example/feed.m3u8";
+    const pages = {
+        [watch]: `<h1>Red Team vs Blue Team</h1><div class="event-info"><span>NCAA</span> November 21, 2026</div>
+            <iframe src="https://js-only.example/player"></iframe>`,
+        "https://js-only.example/player": `<script src="player.js"></script>`,
+        [outdated]: `<h1>NCAAF: Red Team at Blue Team</h1><div class="custom-player-category">November 20, 2026</div>
+            <iframe src="https://old.example/player"></iframe>`,
+        [verified]: `<h1>Red Team at Blue Team</h1><div class="custom-player-category">November 21, 2026</div>
+            <iframe src="${urls[0]}"></iframe>`,
+        [urls[0]]: `<iframe src="${urls[1]}"></iframe>`,
+        [urls[1]]: `<iframe src="${urls[2]}"></iframe>`,
+        [urls[2]]: `const DIRECT_STREAM_URL = "${playlist}";`,
+        [playlist]: "#EXTM3U\n",
+    };
+    const requested = [];
+    const result = await service.resolve(new URL(watch), new AbortController().signal, async (url, _, referer) => {
+        requested.push(url.href);
+        if (url.href === playlist) assert.equal(referer, "https://final.example/");
+        return { url, text: pages[url.href] || "" };
+    });
+    assert.equal(result.url.href, playlist);
+    assert.ok(requested.includes(outdated));
+    assert.ok(!requested.includes("https://old.example/player"));
+});
+
+test("PNG-wrapped transport packets are unpacked without changing normal media", () => {
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAgAAAACCAIAAADq9gq6AAAAM0lEQVR4nGMI8fQO8fQOiGBgYJCR7+ZgYGBgYGD4X5zOILHrwNzCF0wM8TV85ysYGeAAACjqCttgwtNrAAAAAElFTkSuQmCC", "base64");
+    const transport = Buffer.concat([Buffer.from([0x47]), Buffer.alloc(187), Buffer.from([0x47]), Buffer.alloc(187, 1)]);
+    assert.deepEqual(service.unpackSegment(png), transport);
+    assert.equal(service.unpackSegment(transport), transport);
+    const truncated = png.subarray(0, 38);
+    assert.equal(service.unpackSegment(truncated), truncated);
 });

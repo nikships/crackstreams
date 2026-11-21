@@ -6,13 +6,11 @@
     const av = window.webapis && window.webapis.avplay;
     const directory = $("directory");
     const player = $("player");
-    const linkScreen = $("linkScreen");
     const controls = $("playerControls");
     const stop = $("stop");
     const retry = $("retry");
     const sports = $("sports");
     const events = $("events");
-    const input = $("linkInput");
     const previewVideo = $("previewVideo");
     const status = $("directoryStatus");
     const keys = { 13: "Enter", 37: "ArrowLeft", 38: "ArrowUp", 39: "ArrowRight", 40: "ArrowDown", 10009: "Back" };
@@ -31,7 +29,7 @@
     }
 
     function buttons(scope) {
-        return [...scope.querySelectorAll("button:not([disabled]), input")].filter(el => !el.closest("[hidden]"));
+        return [...scope.querySelectorAll("button:not([disabled])")].filter(el => !el.closest("[hidden]"));
     }
 
     async function request(path, signal, value) {
@@ -61,7 +59,7 @@
             try { await ping(); return; } catch (_) {}
             try {
                 const { Service } = await import("wrt:service");
-                if (!nativeService) nativeService = new Service("CrackTV001.StreamService");
+                if (!nativeService) nativeService = new Service("CrackTV001.Playback");
                 // Tizen 10 acknowledges legacy launch calls without actually starting the service.
                 Promise.resolve(nativeService.start()).catch(() => {});
             } catch (_) {
@@ -142,7 +140,7 @@
                     ? start.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })
                     : game.detail || "";
                 button.append(title, detail);
-                button.addEventListener("click", () => watch(game.url, game.title, button, false));
+                button.addEventListener("click", () => watch(game.url, game.title, button));
                 events.append(button);
             });
         } catch (error) {
@@ -184,8 +182,7 @@
         const previous = playback;
         release();
         player.hidden = true;
-        directory.hidden = Boolean(previous && previous.fromLink);
-        linkScreen.hidden = !directory.hidden;
+        directory.hidden = false;
         if (previous) focus(previous.trigger);
     }
 
@@ -206,11 +203,11 @@
         playbackStatus("");
     }
 
-    async function watch(url, title, trigger, fromLink) {
+    async function watch(url, title, trigger) {
         release();
-        const job = { url, title, trigger, fromLink, controller: new AbortController(), playing: false };
+        const job = { url, title, trigger, controller: new AbortController(), playing: false };
         playback = job;
-        directory.hidden = linkScreen.hidden = true;
+        directory.hidden = true;
         player.hidden = false;
         retry.hidden = true;
         $("playerTitle").textContent = title;
@@ -223,7 +220,6 @@
             const source = await request("play", job.controller.signal, url);
             if (playback !== job || job.controller.signal.aborted) return;
             if (!new URL(source.url).href.startsWith(settings.origin + "/")) throw new Error("Invalid playlist URL from the relay.");
-            $("playerTitle").textContent = title || source.title;
             playbackStatus("Starting playback…");
             if (av) {
                 av.open(source.url);
@@ -255,15 +251,9 @@
         }
     }
 
-    function closeLink() {
-        linkScreen.hidden = true;
-        directory.hidden = false;
-        focus($("openLink"));
-    }
-
     function move(key) {
         const active = document.activeElement;
-        const scope = !player.hidden ? controls : !linkScreen.hidden ? linkScreen : directory;
+        const scope = player.hidden ? directory : controls;
         const all = buttons(scope);
         if (!all.includes(active)) { focus(all[0]); return; }
         const row = active.closest(".actions");
@@ -273,8 +263,6 @@
         if (row && horizontal) {
             const siblings = buttons(row);
             focus(siblings[siblings.indexOf(active) + step]);
-        } else if (scope === linkScreen) {
-            focus(step < 0 ? input : buttons($("linkForm").querySelector(".actions"))[0]);
         } else if (scope === directory) {
             if (list && horizontal) {
                 if (list === sports && step === 1) focus(buttons(events)[0]);
@@ -288,46 +276,25 @@
         }
     }
 
-    $("openLink").addEventListener("click", () => {
-        directory.hidden = true;
-        linkScreen.hidden = false;
-        $("linkError").hidden = true;
-        focus(input);
-    });
-    $("closeLink").addEventListener("click", closeLink);
     $("refresh").addEventListener("click", loadSports);
-    $("linkForm").addEventListener("submit", event => {
-        event.preventDefault();
-        const url = input.value.trim();
-        if (!/^https?:\/\//i.test(url)) {
-            $("linkError").textContent = "Enter an HTTP or HTTPS stream link.";
-            $("linkError").hidden = false;
-            focus(input);
-            return;
-        }
-        $("linkError").hidden = true;
-        watch(url, "", $("playLink"), true);
-    });
     stop.addEventListener("click", closePlayer);
     retry.addEventListener("click", () => {
-        const { url, title, trigger, fromLink } = playback;
-        watch(url, title, trigger, fromLink);
+        const { url, title, trigger } = playback;
+        watch(url, title, trigger);
     });
     document.addEventListener("keydown", event => {
         const key = keys[event.keyCode] || event.key || "";
         if (key === "Back" || key === "Escape" || key === "BrowserBack" || key === "GoBack") {
             event.preventDefault();
             if (!player.hidden) closePlayer();
-            else if (!linkScreen.hidden) closeLink();
             else if (window.tizen) window.tizen.application.getCurrentApplication().exit();
             return;
         }
-        if (event.isComposing || event.keyCode === 229) return;
         if (!player.hidden && controls.hidden && (key === "Enter" || key.startsWith("Arrow"))) {
             event.preventDefault();
             showControls();
             focus(stop);
-        } else if (key.startsWith("Arrow") && !(document.activeElement === input && /Left|Right/.test(key))) {
+        } else if (key.startsWith("Arrow")) {
             event.preventDefault();
             showControls();
             move(key);

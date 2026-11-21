@@ -1,6 +1,6 @@
 # Crackstreams for Samsung Smart TV
 
-Use the remote’s arrows and **OK** to pick a sport and game. **Back** returns from video to the same game, or exits the directory. **Enter a link** accepts a Crackstreams watch page or a public `.m3u8` link. The TV app plays one feed at a time using Samsung AVPlay; four-pane multiview remains a macOS feature.
+Use the remote’s arrows and **OK** to pick a sport and game. **Back** returns from video to the same game, or exits the directory. The TV app plays one feed at a time using Samsung AVPlay; four-pane multiview remains a macOS feature.
 
 Everything runs on the TV. The widget starts its bundled Tizen service, which reads the listings, resolves stream links, and supplies any upstream headers the feeds need. The service only listens on the TV’s loopback address, authenticates app requests, and signs each HLS URL. No other device has to stay on after installation. This client targets Samsung TVs running Tizen 10.
 

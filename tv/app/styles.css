@@ -12,15 +12,16 @@
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
 body { color: var(--ink); background: transparent; }
 h1, h2, p { margin: 0; }
-button, input { font: inherit; color: inherit; }
 button {
+  font: inherit;
+  color: inherit;
   border: 1px solid #2c3d55;
   border-radius: .45rem;
   background: var(--surface);
   padding: .65rem .95rem;
   cursor: pointer;
 }
-button:focus, input:focus {
+button:focus {
   outline: .13rem solid var(--accent);
   outline-offset: -.13rem;
   background: #17354a;
@@ -63,22 +64,10 @@ h1 { font-size: 1.5rem; font-weight: 720; }
 .event .title { overflow-wrap: anywhere; }
 .event .detail { flex: none; color: var(--muted); white-space: nowrap; font-size: .8rem; }
 .event .live { color: var(--accent); }
-#directoryStatus, #linkError, footer, .sheet p { color: var(--muted); font-size: .82rem; }
+#directoryStatus, footer { color: var(--muted); font-size: .82rem; }
 #directoryStatus:empty { display: none; }
 footer { display: flex; gap: 1rem; }
 kbd { font: inherit; color: var(--ink); font-weight: 700; }
-.dialog { display: grid; position: absolute; inset: 0; place-items: center; background: #090f19ed; }
-.sheet {
-  width: min(40rem, 85vw);
-  display: grid;
-  gap: .8rem;
-  padding: 1.5rem;
-  border: 1px solid #2c3d55;
-  border-radius: .75rem;
-  background: #101a2a;
-}
-.sheet input { width: 100%; border: 1px solid #2c3d55; border-radius: .4rem; padding: .7rem; background: #08101b; }
-.sheet .actions { justify-content: flex-end; }
 #player, #avplayer, #previewVideo, .player-controls { position: absolute; inset: 0; width: 100%; height: 100%; }
 #previewVideo { object-fit: contain; background: #000; }
 .player-controls { pointer-events: none; }

@@ -11,10 +11,7 @@
   <main id="directory">
     <header class="topbar">
       <div class="brand"><img src="icon.png" alt=""><span>Crackstreams</span><small>TV</small></div>
-      <div class="actions">
-        <button id="openLink" type="button">Enter a link</button>
-        <button id="refresh" type="button">Refresh</button>
-      </div>
+      <button id="refresh" type="button">Refresh</button>
     </header>
     <div class="board">
       <section class="rail" aria-labelledby="sportsTitle">
@@ -29,19 +26,6 @@
     </div>
     <footer><span><kbd>↑ ↓ ← →</kbd> Move</span><span><kbd>OK</kbd> Select</span><span><kbd>Back</kbd> Exit</span></footer>
   </main>
-
-  <section id="linkScreen" class="dialog" role="dialog" aria-modal="true" aria-labelledby="linkTitle" hidden>
-    <form id="linkForm" class="sheet">
-      <h1 id="linkTitle">Enter a stream link</h1>
-      <p>Use a Crackstreams watch page or a direct HLS playlist.</p>
-      <input id="linkInput" type="url" aria-label="Stream URL" placeholder="https://…" autocomplete="off" spellcheck="false">
-      <p id="linkError" role="status" hidden></p>
-      <div class="actions">
-        <button id="closeLink" type="button">Cancel</button>
-        <button id="playLink" type="submit">Watch</button>
-      </div>
-    </form>
-  </section>
 
   <section id="player" aria-label="Video player" hidden>
     <object id="avplayer" type="application/avplayer" aria-hidden="true"></object>

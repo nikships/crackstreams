@@ -7,7 +7,7 @@
     const crypto = nodeRequire("crypto");
     const zlib = nodeRequire("zlib");
     const { URL, URLSearchParams } = nodeRequire("url");
-    const port = 48636;
+    const port = 48638;
     const host = "127.0.0.1:" + port;
     const origin = "http://" + host;
     const home = "https://crackstreams.mx/";
@@ -218,34 +218,138 @@
         return match && webURL(match[1], base);
     }
 
-    async function resolve(url, signal) {
-        const title = decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || "Stream")
-            .replace(/\.m3u8$/i, "").replace(/[-_]+/g, " ");
+    function event(html, className) {
+        const heading = /<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html);
+        const info = new RegExp(`<div\\b[^>]*class=["']${className}["'][^>]*>([\\s\\S]*?)<\\/div>`, "i").exec(html);
+        if (!heading || !info) return null;
+        const teams = plain(heading[1]).toLowerCase().replace(/^ncaaf\s*:\s*/, "")
+            .replace(/\s+(?:vs\.?|at)\s+/, " vs ").replace(/[^a-z0-9]+/g, " ").trim();
+        const detail = plain(info[1]);
+        const date = /\b(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}\b/i.exec(detail);
+        return date && { teams, date: date[0].toLowerCase(), college: /^\s*NCAA\b/i.test(detail) };
+    }
+
+    function alternatePages(url, match) {
+        const slug = /^\/stream\/([a-z0-9-]+)\/?$/i.exec(url.pathname);
+        if (!match || !slug || !siteURL(url.href, "/stream/") || !slug[1].includes("-vs-")) return [];
+        const name = slug[1].replace("-vs-", "-at-");
+        return (match.college ? ["ncaaf-" + name, name] : [name])
+            .map(path => new URL("https://hdcrackstreams.live/custom-stream/" + path));
+    }
+
+    async function resolve(url, signal, load = text) {
         const originRef = value => value.origin + "/";
         const check = async (value, referer) => {
-            const result = await text(value, signal, referer);
-            return /^#EXTM3U\b/.test(result.text) ? { url: result.url, referer, title } : null;
+            const result = await load(value, signal, referer);
+            return /^#EXTM3U\b/.test(result.text) ? { url: result.url, referer } : null;
         };
-        if (/\.m3u8$/i.test(url.pathname)) {
-            const direct = await check(url, originRef(url));
-            if (direct) return direct;
-            throw error(502, "That link didn’t return an HLS playlist.");
+        async function fromEmbeds(page, maxDepth, maxPages) {
+            const visited = new Set([page.url.href]);
+            const queue = embeds(page.text, page.url).map(url => ({ url, parent: page.url, depth: 1 }));
+            while (queue.length && maxPages > 0) {
+                const { url, parent, depth } = queue.shift();
+                if (visited.has(url.href)) continue;
+                visited.add(url.href);
+                maxPages--;
+                for (const referer of new Set([originRef(url), originRef(parent)])) {
+                    if (signal.aborted) throw signal.reason;
+                    try {
+                        const child = await load(url, signal, referer);
+                        const playlist = playlistIn(child.text, child.url);
+                        const playable = playlist && await check(playlist, originRef(child.url));
+                        if (playable) return playable;
+                        if (depth < maxDepth) {
+                            const next = embeds(child.text, child.url);
+                            if (next.length) {
+                                queue.push(...next.map(url => ({ url, parent: child.url, depth: depth + 1 })));
+                                break;
+                            }
+                        }
+                    } catch (failure) { if (signal.aborted) throw failure; }
+                }
+            }
+            return null;
         }
-        const watch = await text(url, signal);
-        const candidates = embeds(watch.text, watch.url);
-        if (!candidates.length) throw error(502, "No stream player was found on that page.");
-        for (const embed of candidates) {
-            for (const referer of new Set([originRef(embed), originRef(watch.url)])) {
-                if (signal.aborted) throw signal.reason;
-                try {
-                    const page = await text(embed, signal, referer);
-                    const playlist = playlistIn(page.text, page.url);
-                    const playable = playlist && await check(playlist, originRef(page.url));
-                    if (playable) return playable;
-                } catch (failure) { if (signal.aborted) throw failure; }
+
+        const watch = await load(url, signal);
+        const primary = await fromEmbeds(watch, 1, 8);
+        if (primary) return primary;
+        const match = event(watch.text, "event-info");
+        for (const alternative of alternatePages(watch.url, match)) {
+            if (signal.aborted) throw signal.reason;
+            try {
+                const page = await load(alternative, signal);
+                if (page.url.origin !== alternative.origin) continue;
+                const candidate = event(page.text, "custom-player-category");
+                if (!candidate || candidate.teams !== match.teams || candidate.date !== match.date) continue;
+                const playable = await fromEmbeds(page, 3, 5);
+                if (playable) return playable;
+            } catch (failure) { if (signal.aborted) throw failure; }
+        }
+        throw error(502, "No compatible direct feed was found. Try another link or try again later.");
+    }
+
+    const pngSignature = Buffer.from("89504e470d0a1a0a", "hex");
+    const pixelMarker = Buffer.from("TIKTIKPX");
+    const unpackLimit = 32 * 1024 * 1024;
+
+    function transportStream(data) {
+        return data.length > 188 && data[0] === 0x47 && data[188] === 0x47;
+    }
+
+    function unpackSegment(data) {
+        if (!data.subarray(0, 8).equals(pngSignature)) return data;
+        const chunks = [];
+        let width, height, channels, trailer;
+        for (let offset = 8; offset + 12 <= data.length;) {
+            const length = data.readUInt32BE(offset);
+            if (length > data.length - offset - 12) break;
+            const type = data.toString("ascii", offset + 4, offset + 8);
+            const part = data.subarray(offset + 8, offset + 8 + length);
+            offset += length + 12;
+            if (type === "IHDR" && length === 13) {
+                width = part.readUInt32BE(0);
+                height = part.readUInt32BE(4);
+                const color = part[9];
+                if (part[8] === 8 && !part[10] && !part[11] && !part[12]) channels = color === 2 ? 3 : color === 6 ? 4 : 0;
+            } else if (type === "IDAT") {
+                chunks.push(part);
+            } else if (type === "IEND" && length === 0) {
+                trailer = data.subarray(offset);
+                break;
             }
         }
-        throw error(502, "The stream isn’t live yet, or all of its feeds are unavailable.");
+        if (!trailer) return data;
+        if (transportStream(trailer)) return trailer;
+        if (!channels || !width || !height || width * height > 4 * 1024 * 1024) return data;
+        const stride = width * channels;
+        const expected = (stride + 1) * height;
+        const raw = zlib.inflateSync(Buffer.concat(chunks), { maxOutputLength: expected });
+        if (raw.length !== expected) return data;
+        const pixels = Buffer.allocUnsafe(width * height * 3);
+        for (let y = 0; y < height; y++) {
+            const row = y * (stride + 1) + 1;
+            const filter = raw[row - 1];
+            if (filter > 4) return data;
+            for (let x = 0, rgb = y * width * 3; x < stride; x++) {
+                if (filter) {
+                    const left = x >= channels ? raw[row + x - channels] : 0;
+                    const up = y ? raw[row + x - stride - 1] : 0;
+                    const corner = y && x >= channels ? raw[row + x - stride - 1 - channels] : 0;
+                    const p = left + up - corner, a = Math.abs(p - left), b = Math.abs(p - up), c = Math.abs(p - corner);
+                    const predictor = filter === 1 ? left : filter === 2 ? up : filter === 3 ? (left + up) >> 1
+                        : a <= b && a <= c ? left : b <= c ? up : corner;
+                    raw[row + x] += predictor;
+                }
+                if (channels === 3 || x % 4 !== 3) pixels[rgb++] = raw[row + x];
+            }
+            if (!y && width >= 3 && !pixels.subarray(0, 8).equals(pixelMarker)) return data;
+        }
+        if (pixels.length < 12 || !pixels.subarray(0, 8).equals(pixelMarker)) return data;
+        const length = pixels.readUInt32BE(8);
+        if (length < 2 || length > pixels.length - 12) return data;
+        const body = zlib.gunzipSync(pixels.subarray(12, 12 + length), { maxOutputLength: unpackLimit });
+        return transportStream(body) ? body : data;
     }
 
     function sign(path, url, referer) {
@@ -341,12 +445,10 @@
                     return json(res, 200, games((await text(league, signal)).text));
                 }
                 case "/api/play": {
-                    const watch = webURL(source);
-                    if (!watch || (!/\.m3u8$/i.test(watch.pathname) && !siteURL(source, "/stream/"))) {
-                        throw error(400, "Enter a Crackstreams watch link or a public .m3u8 URL.");
-                    }
+                    const watch = siteURL(source, "/stream/");
+                    if (!watch) throw error(400, "Choose a game from the directory.");
                     const stream = await resolve(watch, signal);
-                    return json(res, 200, { title: stream.title, url: relayURL("/stream.m3u8", stream.url, stream.referer) });
+                    return json(res, 200, { url: relayURL("/stream.m3u8", stream.url, stream.referer) });
                 }
                 default:
                     return json(res, 404, { error: "Not found" });
@@ -361,14 +463,16 @@
             const url = webURL(source);
             if (!url) return json(res, 400, { error: "Invalid media address" });
             const range = req.headers.range, head = req.method === "HEAD";
-            const { response, url: base } = await upstream(url, { signal, referer, range });
+            const packed = route.pathname.endsWith(".ts") && referer === "https://frame.embedme.cfd/";
+            const { response, url: base } = await upstream(url, { signal, referer, range: packed ? undefined : range });
             const code = response.statusCode;
             if (code < 200 || code >= 300) {
                 response.destroy();
                 return send(res, code, "", "text/plain", head);
             }
             const playlist = route.pathname.endsWith(".m3u8");
-            const bytes = await readBody(response, playlist ? textLimit : mediaLimit);
+            let bytes = await readBody(response, playlist ? textLimit : mediaLimit);
+            if (packed) bytes = unpackSegment(bytes);
             if (bytes.toString("utf8", 0, 7) === "#EXTM3U") {
                 const body = rewrite(bytes.toString("utf8"), base, referer);
                 return send(res, 200, body, "application/vnd.apple.mpegurl", head);
@@ -410,7 +514,8 @@
             hostModule.exports.onRequest = start;
             hostModule.exports.onStop = () => { if (server) server.close(); server = undefined; };
         } else {
-            hostModule.exports = { leagues, games, embeds, playlistIn, webURL, publicAddress, rewrite, sign, slice, eventStart };
+            hostModule.exports = { leagues, games, embeds, playlistIn, webURL, publicAddress, rewrite, sign, slice, eventStart,
+                resolve, unpackSegment };
         }
     }
 })(typeof require === "function" ? require : null, typeof module === "object" ? module : null);

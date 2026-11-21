@@ -59,4 +59,15 @@ final class HLSProxyTests: XCTestCase {
         XCTAssertNil(HLSProxy.slice(data, range: "bytes=0-2,5-7"))
         XCTAssertNil(HLSProxy.slice(data, range: "lines=0-2"))
     }
+
+    func testUnpacksTransportStreamFromPNGWithoutChangingOrdinarySegments() throws {
+        // A synthetic PNG carrying two transport packets. No live stream data.
+        let fixture = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAACCAIAAADq9gq6AAAAM0lEQVR4nGMI8fQO8fQOiGBgYJCR7+ZgYGBgYGD4X5zOILHrwNzCF0wM8TV85ysYGeAAACjqCttgwtNrAAAAAElFTkSuQmCC"
+        let packed = try XCTUnwrap(Data(base64Encoded: fixture))
+        let transport = Data([0x47] + Array(repeating: 0, count: 187) + [0x47] + Array(repeating: 1, count: 187))
+        XCTAssertEqual(PackedSegment.unpack(packed), transport)
+        XCTAssertEqual(PackedSegment.unpack(transport), transport)
+        let truncated = Data(packed.prefix(38))
+        XCTAssertEqual(PackedSegment.unpack(truncated), truncated)
+    }
 }
