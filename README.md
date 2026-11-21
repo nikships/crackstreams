@@ -75,7 +75,7 @@ swift test
 
 ### Samsung Smart TV (Tizen)
 
-[`tv/`](tv) contains a remote-first Samsung TV client with a live sports directory, manual stream entry, and single-stream full-screen playback through Samsung AVPlay. It reuses the macOS resolver and HLS relay, so the Mac must stay awake on the same LAN while you watch. See [Samsung TV setup](tv/README.md) for signing, sideloading, and running the relay.
+[`tv/`](tv) contains a standalone Tizen 10 client with remote navigation, a live sports directory, manual stream entry, and single-stream full-screen playback through Samsung AVPlay. The TV resolves and plays streams itself. No Mac, companion process, or separate server is needed after installation. See [Samsung TV setup](tv/README.md) for signing and sideloading.
 
 ## Architecture
 

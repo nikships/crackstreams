@@ -6,7 +6,7 @@ Native SwiftUI macOS app that resolves watch pages into HLS feeds and plays up t
 
 The README covers installation and release credentials. Read it before publishing. Use the source files directly for implementation details.
 
-Samsung TV changes: read `tv/README.md` for the widget, Mac relay, signing, and on-device validation. Keep the macOS listener loopback-only.
+Samsung TV changes: read `tv/README.md` for the standalone widget, TV-local HLS service, signing, and on-device validation. Keep both platforms’ listeners loopback-only.
 
 ## Development loop
 

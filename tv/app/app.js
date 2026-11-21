@@ -21,6 +21,8 @@
     let playback;
     let hideTimer;
     let startTimer;
+    let serviceReady;
+    let nativeService;
 
     function focus(element) {
         if (!element || !element.isConnected || element.closest("[hidden]")) return;
@@ -33,17 +35,45 @@
     }
 
     async function request(path, signal, value) {
-        if (!settings) throw new Error("The TV package is missing its Mac relay settings.");
+        if (!settings) throw new Error("The TV package is missing its stream service settings.");
         const url = new URL("/api/" + path, settings.origin);
         url.searchParams.set("t", settings.token);
         if (value) url.searchParams.set("url", value);
         const response = await fetch(url.href, { signal, credentials: "omit" }).catch(error => {
             if (signal.aborted) throw error;
-            throw new Error("Can’t reach the Mac relay. Check that the Mac is awake and on this network.");
+            throw new Error("Can’t reach the TV stream service. Try refreshing the directory.");
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "The Mac relay couldn’t complete this request.");
+        if (!response.ok) throw new Error(data.error || "The TV stream service couldn’t complete this request.");
         return data;
+    }
+
+    function startService() {
+        if (!window.tizen) return Promise.resolve();
+        if (serviceReady) return serviceReady;
+        serviceReady = (async () => {
+            const ping = async () => {
+                const signal = new AbortController();
+                const timer = setTimeout(() => signal.abort(), 1000);
+                try { return await request("ping", signal.signal); }
+                finally { clearTimeout(timer); }
+            };
+            try { await ping(); return; } catch (_) {}
+            try {
+                const { Service } = await import("wrt:service");
+                if (!nativeService) nativeService = new Service("CrackTV001.StreamService");
+                // Tizen 10 acknowledges legacy launch calls without actually starting the service.
+                Promise.resolve(nativeService.start()).catch(() => {});
+            } catch (_) {
+                throw new Error("This TV couldn’t launch the built-in stream service.");
+            }
+            for (let attempt = 0; attempt < 24; attempt += 1) {
+                try { await ping(); return; } catch (_) {}
+                await new Promise(resolve => setTimeout(resolve, 350));
+            }
+            throw new Error("The TV stream service didn’t start. Choose Refresh to try again.");
+        })().finally(() => { serviceReady = undefined; });
+        return serviceReady;
     }
 
     function loadingList() {
@@ -60,6 +90,8 @@
         sports.replaceChildren();
         events.replaceChildren();
         try {
+            await startService();
+            if (job.signal.aborted) return;
             const list = await request("leagues", job.signal);
             if (job.signal.aborted) return;
             list.forEach(sport => {
@@ -186,6 +218,8 @@
         focus(stop);
         startTimer = setTimeout(() => failed(job, "Playback took too long to start. Try again."), 45000);
         try {
+            await startService();
+            if (job.controller.signal.aborted) return;
             const source = await request("play", job.controller.signal, url);
             if (playback !== job || job.controller.signal.aborted) return;
             if (!new URL(source.url).href.startsWith(settings.origin + "/")) throw new Error("Invalid playlist URL from the relay.");
