@@ -2,7 +2,7 @@
 
 <img src="https://github.com/user-attachments/assets/12a7e709-f315-440e-bf5f-542f46aca727" alt="Crackstreams for macOS — Native 4-Pane HLS Sports Player" width="100%" />
 
-# Crackstreams for macOS
+# Crackstreams
 
 **Watch up to four live HLS sports streams side by side in a native, borderless macOS player.**<br/>
 Zero ads. Zero popups. Zero browser overhead.
@@ -72,6 +72,10 @@ swift test
 ```
 
 `./build.sh --install` builds `dist/Crackstreams.app`, embeds `Sparkle.framework`, applies ad-hoc signing for local development, and installs it to `~/Applications/Crackstreams.app`.
+
+### Samsung Smart TV (Tizen)
+
+[`tv/`](tv) contains a remote-first Samsung TV client with a live sports directory, manual stream entry, and single-stream full-screen playback through Samsung AVPlay. It reuses the macOS resolver and HLS relay, so the Mac must stay awake on the same LAN while you watch. See [Samsung TV setup](tv/README.md) for signing, sideloading, and running the relay.
 
 ## Architecture
 

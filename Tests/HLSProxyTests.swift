@@ -1,4 +1,5 @@
 import XCTest
+import Network
 @testable import Crackstreams
 
 final class HLSProxyTests: XCTestCase {
@@ -58,5 +59,31 @@ final class HLSProxyTests: XCTestCase {
         XCTAssertNil(HLSProxy.slice(data, range: "bytes=-0"))
         XCTAssertNil(HLSProxy.slice(data, range: "bytes=0-2,5-7"))
         XCTAssertNil(HLSProxy.slice(data, range: "lines=0-2"))
+    }
+
+    func testTVCompanionAuthenticatesHostAndSignedPlaybackRequests() async throws {
+        let loopback = try XCTUnwrap(IPv4Address("127.0.0.1"))
+        let proxy = HLSProxy(companion: .init(address: loopback, client: loopback) { _, path, query in
+            guard path == "/api/leagues", query["t"] == "paired" else {
+                throw HLSProxy.APIError(status: 403, message: "Unpaired")
+            }
+            return Data("[]".utf8)
+        })
+        try proxy.start()
+        let origin = "http://127.0.0.1:\(proxy.port)"
+        let (body, authorized) = try await URLSession.shared.data(from: URL(string: origin + "/api/leagues?t=paired")!)
+        XCTAssertEqual((authorized as? HTTPURLResponse)?.statusCode, 200)
+        XCTAssertEqual(String(decoding: body, as: UTF8.self), "[]")
+        XCTAssertEqual((authorized as? HTTPURLResponse)?.value(forHTTPHeaderField: "Access-Control-Allow-Origin"), "*")
+
+        let (_, unpaired) = try await URLSession.shared.data(from: URL(string: origin + "/api/leagues?t=wrong")!)
+        XCTAssertEqual((unpaired as? HTTPURLResponse)?.statusCode, 403)
+
+        let valid = proxy.localURL(for: base, referer: referer)
+        XCTAssertEqual(valid.host, "127.0.0.1")
+        XCTAssertEqual(valid.port, Int(proxy.port))
+        let tampered = URL(string: valid.absoluteString.replacingOccurrences(of: "/m.m3u8?", with: "/s.ts?"))!
+        let (_, denied) = try await URLSession.shared.data(from: tampered)
+        XCTAssertEqual((denied as? HTTPURLResponse)?.statusCode, 403)
     }
 }

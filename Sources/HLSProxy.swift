@@ -1,22 +1,31 @@
 import Foundation
 import Network
+import CryptoKit
 
-/// Loopback-only HLS relay. It supplies the required Referer upstream and
-/// rewrites playlists so AVPlayer never sees non-standard segment extensions.
-/// Unguessable per-launch tokens keep other local processes and web pages from
-/// using the relay as an open proxy.
+/// Supplies upstream Referer headers and rewrites playlists with standard media
+/// extensions. The desktop listener is loopback-only; the TV companion binds to a
+/// single LAN address and checks both its client's address and signed media URLs.
 final class HLSProxy: @unchecked Sendable {
     static let shared = HLSProxy()
+
+    struct Companion {
+        let address: IPv4Address
+        let client: IPv4Address
+        let api: @Sendable (HLSProxy, String, [String: String]) async throws -> Data
+    }
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.nik.crackstreams.hls-proxy")
     private let token = UUID().uuidString + UUID().uuidString
+    private let signingKey = SymmetricKey(size: .bits256)
+    private let companion: Companion?
     private let tasksLock = NSLock()
     private var requestTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
     private(set) var port: UInt16
 
-    init(port: UInt16 = 0) {
+    init(port: UInt16 = 0, companion: Companion? = nil) {
         self.port = port
+        self.companion = companion
     }
 
     var isRunning: Bool { listener != nil && port != 0 }
@@ -24,8 +33,15 @@ final class HLSProxy: @unchecked Sendable {
     func start() throws {
         guard !isRunning else { return }
         let parameters = NWParameters.tcp
-        parameters.requiredInterfaceType = .loopback
-        let listener = try NWListener(using: parameters, on: .any)
+        let listener: NWListener
+        if let companion {
+            let endpointPort = NWEndpoint.Port(rawValue: port) ?? .any
+            parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(companion.address), port: endpointPort)
+            listener = try NWListener(using: parameters)
+        } else {
+            parameters.requiredInterfaceType = .loopback
+            listener = try NWListener(using: parameters, on: .any)
+        }
         let ready = DispatchSemaphore(value: 0)
         listener.stateUpdateHandler = { state in
             switch state {
@@ -46,7 +62,10 @@ final class HLSProxy: @unchecked Sendable {
     }
 
     func localURL(for upstream: URL, referer: String?, kind: String = "m.m3u8") -> URL {
-        var string = "http://127.0.0.1:\(port)/\(kind)?u=\(Self.encode(upstream.absoluteString))&t=\(token)"
+        let host = companion.map { "\($0.address)" } ?? "127.0.0.1"
+        let source = upstream.absoluteString
+        let ticket = companion == nil ? token : signature(kind: kind, source: source, referer: referer).base64EncodedString()
+        var string = "http://\(host):\(port)/\(kind)?u=\(Self.encode(source))&t=\(Self.encode(ticket))"
         if let referer { string += "&r=\(Self.encode(referer))" }
         return URL(string: string)!
     }
@@ -58,9 +77,33 @@ final class HLSProxy: @unchecked Sendable {
         string.addingPercentEncoding(withAllowedCharacters: unreserved) ?? string
     }
 
+    private func signaturePayload(kind: String, source: String, referer: String?) -> Data {
+        Data("\(Self.encode(kind))/\(Self.encode(source))/\(Self.encode(referer ?? ""))".utf8)
+    }
+
+    private func signature(kind: String, source: String, referer: String?) -> Data {
+        Data(HMAC<SHA256>.authenticationCode(for: signaturePayload(kind: kind, source: source, referer: referer),
+                                             using: signingKey))
+    }
+
+    private func validTicket(_ ticket: String?, path: String, source: String, referer: String?) -> Bool {
+        guard companion != nil else { return ticket == token }
+        guard let ticket, let authenticationCode = Data(base64Encoded: ticket) else { return false }
+        return HMAC<SHA256>.isValidAuthenticationCode(
+            authenticationCode, authenticating: signaturePayload(kind: String(path.dropFirst()), source: source, referer: referer),
+            using: signingKey
+        )
+    }
+
     // MARK: - Connections
 
     private func accept(_ connection: NWConnection) {
+        if let companion {
+            guard case .hostPort(.ipv4(let peer), _) = connection.endpoint, peer == companion.client else {
+                connection.cancel()
+                return
+            }
+        }
         let key = ObjectIdentifier(connection)
         connection.stateUpdateHandler = { [weak self] state in
             switch state {
@@ -116,7 +159,18 @@ final class HLSProxy: @unchecked Sendable {
             guard values.count == 2 else { continue }
             parameters[String(values[0])] = String(values[1]).removingPercentEncoding
         }
-        guard parameters["t"] == token, let source = parameters["u"],
+        if let companion, path.hasPrefix("/api/"), method == "GET" {
+            do {
+                let body = try await companion.api(self, path, parameters)
+                return send(connection, status: 200, body: body, contentType: "application/json")
+            } catch {
+                let failure = error as? APIError
+                let body = (try? JSONEncoder().encode(["error": error.localizedDescription])) ?? Data()
+                return send(connection, status: failure?.status ?? 502, body: body, contentType: "application/json")
+            }
+        }
+        guard let source = parameters["u"],
+              validTicket(parameters["t"], path: path, source: source, referer: parameters["r"]),
               let upstream = URL(string: source),
               let scheme = upstream.scheme?.lowercased(), ["http", "https"].contains(scheme) else {
             return send(connection, status: 403, body: Data())
@@ -138,7 +192,7 @@ final class HLSProxy: @unchecked Sendable {
             if String(decoding: data.prefix(7), as: UTF8.self) == "#EXTM3U" {
                 guard data.count <= Net.maximumPlaylistBytes else { throw ResolveError.responseTooLarge }
                 let rewritten = rewrite(
-                    playlist: String(decoding: data, as: UTF8.self), base: upstream, referer: referer
+                    playlist: String(decoding: data, as: UTF8.self), base: response.url ?? upstream, referer: referer
                 )
                 return send(connection, status: 200, body: Data(rewritten.utf8),
                             contentType: "application/vnd.apple.mpegurl", head: method == "HEAD")
@@ -166,9 +220,16 @@ final class HLSProxy: @unchecked Sendable {
         }
     }
 
+    struct APIError: LocalizedError {
+        let status: Int
+        let message: String
+        var errorDescription: String? { message }
+    }
+
     private func validHost(in lines: [String]) -> Bool {
         guard let host = lines.dropFirst().first(where: { $0.lowercased().hasPrefix("host:") })?
             .dropFirst("host:".count).trimmingCharacters(in: .whitespaces).lowercased() else { return false }
+        if let companion { return host == "\(companion.address):\(port)" }
         return host == "127.0.0.1:\(port)" || host == "localhost:\(port)" || host == "[::1]:\(port)"
     }
 
@@ -200,6 +261,7 @@ final class HLSProxy: @unchecked Sendable {
         var header = "HTTP/1.1 \(status) \(reasons[status] ?? "Error")\r\n"
         header += "Content-Type: \(safeType)\r\nContent-Length: \(body.count)\r\n"
         header += "Accept-Ranges: bytes\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n"
+        if companion != nil { header += "Access-Control-Allow-Origin: *\r\n" }
         if let contentRange { header += "Content-Range: \(contentRange)\r\n" }
         header += "Connection: close\r\n\r\n"
         var output = Data(header.utf8)

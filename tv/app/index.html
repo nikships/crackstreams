@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' file:; connect-src __RELAY_ORIGIN__; media-src __RELAY_ORIGIN__; object-src 'self'; style-src 'self'">
+  <title>Crackstreams</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="directory">
+    <header class="topbar">
+      <div class="brand"><img src="icon.png" alt=""><span>Crackstreams</span><small>TV</small></div>
+      <div class="actions">
+        <button id="openLink" type="button">Enter a link</button>
+        <button id="refresh" type="button">Refresh</button>
+      </div>
+    </header>
+    <div class="board">
+      <section class="rail" aria-labelledby="sportsTitle">
+        <h2 id="sportsTitle">Sports</h2>
+        <div id="sports" class="list"></div>
+      </section>
+      <section class="schedule" aria-labelledby="eventsTitle">
+        <h1 id="eventsTitle">Live games</h1>
+        <p id="directoryStatus" role="status">Connecting to the Mac relay…</p>
+        <div id="events" class="list"></div>
+      </section>
+    </div>
+    <footer><span><kbd>↑ ↓ ← →</kbd> Move</span><span><kbd>OK</kbd> Select</span><span><kbd>Back</kbd> Exit</span></footer>
+  </main>
+
+  <section id="linkScreen" class="dialog" role="dialog" aria-modal="true" aria-labelledby="linkTitle" hidden>
+    <form id="linkForm" class="sheet">
+      <h1 id="linkTitle">Enter a stream link</h1>
+      <p>Use a Crackstreams watch page or a direct HLS playlist.</p>
+      <input id="linkInput" type="url" aria-label="Stream URL" placeholder="https://…" autocomplete="off" spellcheck="false">
+      <p id="linkError" role="status" hidden></p>
+      <div class="actions">
+        <button id="closeLink" type="button">Cancel</button>
+        <button id="playLink" type="submit">Watch</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="player" aria-label="Video player" hidden>
+    <object id="avplayer" type="application/avplayer" aria-hidden="true"></object>
+    <video id="previewVideo" playsinline hidden></video>
+    <div id="playerControls" class="player-controls">
+      <header>
+        <div><div class="eyebrow">NOW WATCHING</div><h1 id="playerTitle"></h1></div>
+        <div class="actions">
+          <button id="stop" type="button">Back to games</button>
+          <button id="retry" type="button" hidden>Retry</button>
+        </div>
+      </header>
+      <p id="playerStatus" role="status"></p>
+    </div>
+  </section>
+
+  <script src="$WEBAPIS/webapis/webapis.js"></script>
+  <script src="settings.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,312 @@
+(() => {
+    "use strict";
+
+    const $ = id => document.getElementById(id);
+    const settings = window.crackstreamsTV;
+    const av = window.webapis && window.webapis.avplay;
+    const directory = $("directory");
+    const player = $("player");
+    const linkScreen = $("linkScreen");
+    const controls = $("playerControls");
+    const stop = $("stop");
+    const retry = $("retry");
+    const sports = $("sports");
+    const events = $("events");
+    const input = $("linkInput");
+    const previewVideo = $("previewVideo");
+    const status = $("directoryStatus");
+    const keys = { 13: "Enter", 37: "ArrowLeft", 38: "ArrowUp", 39: "ArrowRight", 40: "ArrowDown", 10009: "Back" };
+    let league;
+    let listings;
+    let playback;
+    let hideTimer;
+    let startTimer;
+
+    function focus(element) {
+        if (!element || !element.isConnected || element.closest("[hidden]")) return;
+        element.focus({ preventScroll: true });
+        element.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+
+    function buttons(scope) {
+        return [...scope.querySelectorAll("button:not([disabled]), input")].filter(el => !el.closest("[hidden]"));
+    }
+
+    async function request(path, signal, value) {
+        if (!settings) throw new Error("The TV package is missing its Mac relay settings.");
+        const url = new URL("/api/" + path, settings.origin);
+        url.searchParams.set("t", settings.token);
+        if (value) url.searchParams.set("url", value);
+        const response = await fetch(url.href, { signal, credentials: "omit" }).catch(error => {
+            if (signal.aborted) throw error;
+            throw new Error("Can’t reach the Mac relay. Check that the Mac is awake and on this network.");
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "The Mac relay couldn’t complete this request.");
+        return data;
+    }
+
+    function loadingList() {
+        if (listings) listings.abort();
+        listings = new AbortController();
+        return listings;
+    }
+
+    async function loadSports() {
+        const job = loadingList();
+        const selected = league && league.url;
+        if (sports.contains(document.activeElement) || events.contains(document.activeElement)) focus($("refresh"));
+        status.textContent = "Loading sports…";
+        sports.replaceChildren();
+        events.replaceChildren();
+        try {
+            const list = await request("leagues", job.signal);
+            if (job.signal.aborted) return;
+            list.forEach(sport => {
+                const button = document.createElement("button");
+                button.textContent = sport.name;
+                sport.button = button;
+                button.addEventListener("click", () => loadGames(sport));
+                sports.append(button);
+            });
+            if (!list.length) {
+                league = undefined;
+                status.textContent = "No sports are listed right now.";
+                return;
+            }
+            const current = list.find(sport => sport.url === selected) || list[0];
+            if (!directory.hidden && document.activeElement === $("refresh")) focus(current.button);
+            loadGames(current);
+        } catch (error) {
+            if (!job.signal.aborted) status.textContent = error.message;
+        }
+    }
+
+    async function loadGames(sport) {
+        const job = loadingList();
+        if (league && league.button) league.button.removeAttribute("aria-current");
+        league = sport;
+        sport.button.setAttribute("aria-current", "true");
+        $("eventsTitle").textContent = sport.name;
+        status.textContent = "Loading games…";
+        if (events.contains(document.activeElement)) focus(sport.button);
+        events.replaceChildren();
+        try {
+            const list = await request("games", job.signal, sport.url);
+            if (job.signal.aborted) return;
+            status.textContent = list.length ? "" : "No games are listed for this sport.";
+            list.forEach(game => {
+                const button = document.createElement("button");
+                button.className = "event";
+                const title = document.createElement("span");
+                title.className = "title";
+                title.textContent = game.title;
+                const detail = document.createElement("span");
+                detail.className = "detail";
+                const start = game.start && new Date(game.start);
+                const live = start && Date.now() >= +start && Date.now() - +start < 4 * 3600000;
+                if (live || game.channel) detail.classList.add("live");
+                detail.textContent = game.channel ? "24/7" : live ? "LIVE" : start
+                    ? start.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })
+                    : game.detail || "";
+                button.append(title, detail);
+                button.addEventListener("click", () => watch(game.url, game.title, button, false));
+                events.append(button);
+            });
+        } catch (error) {
+            if (!job.signal.aborted) status.textContent = error.message;
+        }
+    }
+
+    function showControls() {
+        controls.hidden = false;
+        clearTimeout(hideTimer);
+        if (playback && playback.playing && !$("playerStatus").textContent) {
+            hideTimer = setTimeout(() => { controls.hidden = true; }, 5000);
+        }
+    }
+
+    function playbackStatus(message) {
+        $("playerStatus").textContent = message;
+        showControls();
+    }
+
+    function release() {
+        clearTimeout(hideTimer);
+        clearTimeout(startTimer);
+        if (!playback) return;
+        const previous = playback;
+        playback = undefined;
+        previous.controller.abort();
+        if (av) {
+            try { if (["PLAYING", "PAUSED", "READY"].includes(av.getState())) av.stop(); } catch (_) {}
+            try { if (av.getState() !== "NONE") av.close(); } catch (_) {}
+        } else {
+            previewVideo.pause();
+            previewVideo.removeAttribute("src");
+            previewVideo.load();
+        }
+    }
+
+    function closePlayer() {
+        const previous = playback;
+        release();
+        player.hidden = true;
+        directory.hidden = Boolean(previous && previous.fromLink);
+        linkScreen.hidden = !directory.hidden;
+        if (previous) focus(previous.trigger);
+    }
+
+    function failed(job, message) {
+        if (playback !== job || job.controller.signal.aborted) return;
+        release();
+        playback = job;
+        job.playing = false;
+        retry.hidden = false;
+        playbackStatus(message);
+        focus(retry);
+    }
+
+    function started(job) {
+        if (playback !== job || job.controller.signal.aborted || job.playing) return;
+        clearTimeout(startTimer);
+        job.playing = true;
+        playbackStatus("");
+    }
+
+    async function watch(url, title, trigger, fromLink) {
+        release();
+        const job = { url, title, trigger, fromLink, controller: new AbortController(), playing: false };
+        playback = job;
+        directory.hidden = linkScreen.hidden = true;
+        player.hidden = false;
+        retry.hidden = true;
+        $("playerTitle").textContent = title;
+        playbackStatus("Finding a playable feed…");
+        focus(stop);
+        startTimer = setTimeout(() => failed(job, "Playback took too long to start. Try again."), 45000);
+        try {
+            const source = await request("play", job.controller.signal, url);
+            if (playback !== job || job.controller.signal.aborted) return;
+            if (!new URL(source.url).href.startsWith(settings.origin + "/")) throw new Error("Invalid playlist URL from the relay.");
+            $("playerTitle").textContent = title || source.title;
+            playbackStatus("Starting playback…");
+            if (av) {
+                av.open(source.url);
+                av.setDisplayRect(0, 0, 1920, 1080);
+                av.setDisplayMethod("PLAYER_DISPLAY_MODE_LETTER_BOX");
+                av.setListener({
+                    onbufferingstart: () => { if (playback === job) playbackStatus(job.playing ? "Buffering…" : "Starting playback…"); },
+                    onbufferingcomplete: () => { if (playback === job && job.playing) playbackStatus(""); },
+                    oncurrentplaytime: time => { if (time > 0) started(job); },
+                    onstreamcompleted: () => failed(job, "The stream ended."),
+                    onerror: () => failed(job, "The TV couldn’t play this feed. Try again or choose another game.")
+                });
+                av.prepareAsync(() => {
+                    if (playback !== job || job.controller.signal.aborted) return;
+                    try { av.play(); } catch (_) { failed(job, "The TV couldn’t start this feed."); }
+                }, () => failed(job, "The TV couldn’t open this feed."));
+            } else {
+                previewVideo.hidden = false;
+                previewVideo.onplaying = () => started(job);
+                previewVideo.onerror = () => failed(job, "This browser can’t play the feed. Try on the Samsung TV.");
+                previewVideo.onwaiting = () => { if (playback === job) playbackStatus("Buffering…"); };
+                previewVideo.oncanplay = () => { if (playback === job && job.playing) playbackStatus(""); };
+                previewVideo.onended = () => failed(job, "The stream ended.");
+                previewVideo.src = source.url;
+                await previewVideo.play();
+            }
+        } catch (error) {
+            if (!job.controller.signal.aborted) failed(job, error.message || "Playback failed.");
+        }
+    }
+
+    function closeLink() {
+        linkScreen.hidden = true;
+        directory.hidden = false;
+        focus($("openLink"));
+    }
+
+    function move(key) {
+        const active = document.activeElement;
+        const scope = !player.hidden ? controls : !linkScreen.hidden ? linkScreen : directory;
+        const all = buttons(scope);
+        if (!all.includes(active)) { focus(all[0]); return; }
+        const row = active.closest(".actions");
+        const list = active.closest(".list");
+        const horizontal = key === "ArrowLeft" || key === "ArrowRight";
+        const step = key === "ArrowLeft" || key === "ArrowUp" ? -1 : 1;
+        if (row && horizontal) {
+            const siblings = buttons(row);
+            focus(siblings[siblings.indexOf(active) + step]);
+        } else if (scope === linkScreen) {
+            focus(step < 0 ? input : buttons($("linkForm").querySelector(".actions"))[0]);
+        } else if (scope === directory) {
+            if (list && horizontal) {
+                if (list === sports && step === 1) focus(buttons(events)[0]);
+                if (list === events && step === -1) focus(league && league.button);
+            } else if (list) {
+                const siblings = buttons(list);
+                focus(siblings[siblings.indexOf(active) + step] || (step === -1 ? $("refresh") : null));
+            } else if (step === 1) {
+                focus((league && league.button) || buttons(sports)[0]);
+            }
+        }
+    }
+
+    $("openLink").addEventListener("click", () => {
+        directory.hidden = true;
+        linkScreen.hidden = false;
+        $("linkError").hidden = true;
+        focus(input);
+    });
+    $("closeLink").addEventListener("click", closeLink);
+    $("refresh").addEventListener("click", loadSports);
+    $("linkForm").addEventListener("submit", event => {
+        event.preventDefault();
+        const url = input.value.trim();
+        if (!/^https?:\/\//i.test(url)) {
+            $("linkError").textContent = "Enter an HTTP or HTTPS stream link.";
+            $("linkError").hidden = false;
+            focus(input);
+            return;
+        }
+        $("linkError").hidden = true;
+        watch(url, "", $("playLink"), true);
+    });
+    stop.addEventListener("click", closePlayer);
+    retry.addEventListener("click", () => {
+        const { url, title, trigger, fromLink } = playback;
+        watch(url, title, trigger, fromLink);
+    });
+    document.addEventListener("keydown", event => {
+        const key = keys[event.keyCode] || event.key || "";
+        if (key === "Back" || key === "Escape" || key === "BrowserBack" || key === "GoBack") {
+            event.preventDefault();
+            if (!player.hidden) closePlayer();
+            else if (!linkScreen.hidden) closeLink();
+            else if (window.tizen) window.tizen.application.getCurrentApplication().exit();
+            return;
+        }
+        if (event.isComposing || event.keyCode === 229) return;
+        if (!player.hidden && controls.hidden && (key === "Enter" || key.startsWith("Arrow"))) {
+            event.preventDefault();
+            showControls();
+            focus(stop);
+        } else if (key.startsWith("Arrow") && !(document.activeElement === input && /Left|Right/.test(key))) {
+            event.preventDefault();
+            showControls();
+            move(key);
+        } else if (key === "Enter" && document.activeElement.tagName === "BUTTON") {
+            event.preventDefault();
+            if (!event.repeat) document.activeElement.click();
+        }
+    });
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden && playback) closePlayer();
+    });
+    window.addEventListener("pagehide", release);
+
+    focus($("refresh"));
+    loadSports();
+})();

@@ -19,5 +19,11 @@ jobs:
         run: swift test
       - name: Build app bundle
         run: bash Scripts/build-app.sh
+      - name: Validate Samsung TV sources
+        run: |
+          bash Scripts/build-tv-relay.sh
+          node --check tv/app/app.js
+          node --check tv/tests/preview.mjs
+          xmllint --noout tv/app/config.xml
       - name: Validate scripts
-        run: bash -n build.sh Scripts/*.sh
+        run: for script in build.sh Scripts/*.sh; do bash -n "$script" || exit; done
