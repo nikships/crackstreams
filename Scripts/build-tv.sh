@@ -13,7 +13,7 @@ mkdir -p "$out"
 stage="$(mktemp -d "$out/package.XXXXXXXX")"
 trap 'rm -rf "$stage"' EXIT
 token="$(openssl rand -hex 32)"
-origin="http://127.0.0.1:48638"
+origin="http://127.0.0.1:48639"
 mkdir -p "$stage/widget/service"
 sed "s|__RELAY_ORIGIN__|$origin|g" "$repo/tv/app/index.html" > "$stage/widget/index.html"
 sed "s|__TV_TOKEN__|$token|g" "$repo/tv/app/service.js" > "$stage/widget/service/index.js"

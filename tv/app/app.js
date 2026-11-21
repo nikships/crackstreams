@@ -13,7 +13,11 @@
     const events = $("events");
     const previewVideo = $("previewVideo");
     const status = $("directoryStatus");
+    const playerStatus = $("playerStatus");
     const keys = { 13: "Enter", 37: "ArrowLeft", 38: "ArrowUp", 39: "ArrowRight", 40: "ArrowDown", 10009: "Back" };
+    const stallAfter = 12000;
+    const healthyAfter = 45000;
+    const maxReconnects = 2;
     let league;
     let listings;
     let playback;
@@ -32,11 +36,12 @@
         return [...scope.querySelectorAll("button:not([disabled])")].filter(el => !el.closest("[hidden]"));
     }
 
-    async function request(path, signal, value) {
+    async function request(path, signal, value, avoid = []) {
         if (!settings) throw new Error("The TV package is missing its stream service settings.");
         const url = new URL("/api/" + path, settings.origin);
         url.searchParams.set("t", settings.token);
         if (value) url.searchParams.set("url", value);
+        for (const feed of avoid) url.searchParams.append("avoid", feed);
         const response = await fetch(url.href, { signal, credentials: "omit" }).catch(error => {
             if (signal.aborted) throw error;
             throw new Error("Can’t reach the TV stream service. Try refreshing the directory.");
@@ -59,7 +64,7 @@
             try { await ping(); return; } catch (_) {}
             try {
                 const { Service } = await import("wrt:service");
-                if (!nativeService) nativeService = new Service("CrackTV001.Playback");
+                if (!nativeService) nativeService = new Service("CrackTV001.HLS");
                 // Tizen 10 acknowledges legacy launch calls without actually starting the service.
                 Promise.resolve(nativeService.start()).catch(() => {});
             } catch (_) {
@@ -151,13 +156,13 @@
     function showControls() {
         controls.hidden = false;
         clearTimeout(hideTimer);
-        if (playback && playback.playing && !$("playerStatus").textContent) {
+        if (playback && playback.playing && !playerStatus.textContent) {
             hideTimer = setTimeout(() => { controls.hidden = true; }, 5000);
         }
     }
 
     function playbackStatus(message) {
-        $("playerStatus").textContent = message;
+        playerStatus.textContent = message;
         showControls();
     }
 
@@ -167,6 +172,8 @@
         if (!playback) return;
         const previous = playback;
         playback = undefined;
+        clearInterval(previous.clockTimer);
+        clearTimeout(previous.reconnectTimer);
         previous.controller.abort();
         if (av) {
             try { if (["PLAYING", "PAUSED", "READY"].includes(av.getState())) av.stop(); } catch (_) {}
@@ -183,71 +190,120 @@
         release();
         player.hidden = true;
         directory.hidden = false;
-        if (previous) focus(previous.trigger);
+        if (previous) focus(previous.game.trigger);
     }
 
-    function failed(job, message) {
-        if (playback !== job || job.controller.signal.aborted) return;
+    function active(job) {
+        return playback === job && !job.controller.signal.aborted;
+    }
+
+    function interrupted(job, message) {
+        if (!active(job)) return;
+        const { game } = job;
         release();
         playback = job;
         job.playing = false;
+        if (game.started && game.reconnects < maxReconnects) {
+            if (job.feed) game.avoid.add(job.feed);
+            game.reconnects++;
+            playbackStatus("Reconnecting…");
+            focus(stop);
+            job.reconnectTimer = setTimeout(() => {
+                if (playback === job) startAttempt(game);
+            }, game.reconnects === 1 ? 0 : 3000);
+            return;
+        }
         retry.hidden = false;
-        playbackStatus(message);
+        playbackStatus(game.started ? "Couldn’t reconnect. Retry or choose another game." : message);
         focus(retry);
     }
 
-    function started(job) {
-        if (playback !== job || job.controller.signal.aborted || job.playing) return;
-        clearTimeout(startTimer);
-        job.playing = true;
-        playbackStatus("");
+    function buffering(job) {
+        if (!active(job) || !job.playing) return;
+        job.healthySince = undefined;
+        if (!playerStatus.textContent) playbackStatus("Buffering…");
     }
 
-    async function watch(url, title, trigger) {
+    function progressed(job, time) {
+        // Replaying time we've already seen is not forward progress.
+        if (!active(job) || !Number.isFinite(time) || time <= job.highWater) return;
+        job.highWater = time;
+        const now = performance.now();
+        if (job.healthySince === undefined || now - job.lastProgress >= 4000) job.healthySince = now;
+        job.lastProgress = now;
+        if (!job.playing) {
+            clearTimeout(startTimer);
+            job.playing = job.game.started = true;
+        }
+        if (now - job.healthySince >= healthyAfter) {
+            job.game.reconnects = 0;
+            job.game.avoid.clear();
+        }
+        if (playerStatus.textContent) playbackStatus("");
+    }
+
+    function watchClock(job, readTime) {
+        job.clockTimer = setInterval(() => {
+            if (!active(job)) return;
+            try { progressed(job, readTime()); } catch (_) {}
+            if (!job.playing) return;
+            const idle = performance.now() - job.lastProgress;
+            if (idle >= stallAfter) interrupted(job, "The feed stopped playing.");
+            else if (idle >= 4000) buffering(job);
+        }, 1000);
+    }
+
+    function watch(url, title, trigger) {
         release();
-        const job = { url, title, trigger, controller: new AbortController(), playing: false };
-        playback = job;
         directory.hidden = true;
         player.hidden = false;
-        retry.hidden = true;
         $("playerTitle").textContent = title;
-        playbackStatus("Finding a playable feed…");
+        startAttempt({ url, trigger, started: false, reconnects: 0, avoid: new Set() });
+    }
+
+    async function startAttempt(game) {
+        const job = { game, controller: new AbortController(), playing: false, highWater: 0 };
+        playback = job;
+        retry.hidden = true;
+        playbackStatus(game.started ? "Reconnecting…" : "Finding a playable feed…");
         focus(stop);
-        startTimer = setTimeout(() => failed(job, "Playback took too long to start. Try again."), 45000);
+        startTimer = setTimeout(() => interrupted(job, "Playback took too long to start. Try again."), 45000);
         try {
             await startService();
-            if (job.controller.signal.aborted) return;
-            const source = await request("play", job.controller.signal, url);
-            if (playback !== job || job.controller.signal.aborted) return;
+            if (!active(job)) return;
+            const source = await request("play", job.controller.signal, game.url, game.avoid);
+            if (!active(job)) return;
             if (!new URL(source.url).href.startsWith(settings.origin + "/")) throw new Error("Invalid playlist URL from the relay.");
-            playbackStatus("Starting playback…");
+            job.feed = source.feed;
+            if (!game.started) playbackStatus("Starting playback…");
             if (av) {
                 av.open(source.url);
                 av.setDisplayRect(0, 0, 1920, 1080);
                 av.setDisplayMethod("PLAYER_DISPLAY_MODE_LETTER_BOX");
                 av.setListener({
-                    onbufferingstart: () => { if (playback === job) playbackStatus(job.playing ? "Buffering…" : "Starting playback…"); },
-                    onbufferingcomplete: () => { if (playback === job && job.playing) playbackStatus(""); },
-                    oncurrentplaytime: time => { if (time > 0) started(job); },
-                    onstreamcompleted: () => failed(job, "The stream ended."),
-                    onerror: () => failed(job, "The TV couldn’t play this feed. Try again or choose another game.")
+                    onbufferingstart: () => buffering(job),
+                    oncurrentplaytime: time => progressed(job, time),
+                    onstreamcompleted: () => interrupted(job, "The stream ended."),
+                    onerror: () => interrupted(job, "The TV couldn’t play this feed. Try again or choose another game.")
                 });
+                watchClock(job, () => av.getState() === "PLAYING" ? av.getCurrentTime() : 0);
                 av.prepareAsync(() => {
-                    if (playback !== job || job.controller.signal.aborted) return;
-                    try { av.play(); } catch (_) { failed(job, "The TV couldn’t start this feed."); }
-                }, () => failed(job, "The TV couldn’t open this feed."));
+                    if (!active(job)) return;
+                    try { av.play(); } catch (_) { interrupted(job, "The TV couldn’t start this feed."); }
+                }, () => interrupted(job, "The TV couldn’t open this feed."));
             } else {
                 previewVideo.hidden = false;
-                previewVideo.onplaying = () => started(job);
-                previewVideo.onerror = () => failed(job, "This browser can’t play the feed. Try on the Samsung TV.");
-                previewVideo.onwaiting = () => { if (playback === job) playbackStatus("Buffering…"); };
-                previewVideo.oncanplay = () => { if (playback === job && job.playing) playbackStatus(""); };
-                previewVideo.onended = () => failed(job, "The stream ended.");
+                const readTime = () => previewVideo.currentTime * 1000;
+                previewVideo.ontimeupdate = () => progressed(job, readTime());
+                previewVideo.onerror = () => interrupted(job, "This browser can’t play the feed. Try on the Samsung TV.");
+                previewVideo.onwaiting = () => buffering(job);
+                previewVideo.onended = () => interrupted(job, "The stream ended.");
+                watchClock(job, readTime);
                 previewVideo.src = source.url;
                 await previewVideo.play();
             }
         } catch (error) {
-            if (!job.controller.signal.aborted) failed(job, error.message || "Playback failed.");
+            interrupted(job, error.message || "Playback failed.");
         }
     }
 
@@ -279,8 +335,8 @@
     $("refresh").addEventListener("click", loadSports);
     stop.addEventListener("click", closePlayer);
     retry.addEventListener("click", () => {
-        const { url, title, trigger } = playback;
-        watch(url, title, trigger);
+        const { game } = playback;
+        watch(game.url, $("playerTitle").textContent, game.trigger);
     });
     document.addEventListener("keydown", event => {
         const key = keys[event.keyCode] || event.key || "";

@@ -23,7 +23,7 @@ jobs:
         run: |
           node --check tv/app/app.js
           node --check tv/tests/preview.mjs
-          node --test tv/tests/service.test.cjs
+          node --test tv/tests/*.test.cjs
           xmllint --noout tv/app/config.xml
           bash Scripts/build-tv.sh
       - name: Validate scripts

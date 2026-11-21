@@ -7,7 +7,7 @@
     const crypto = nodeRequire("crypto");
     const zlib = nodeRequire("zlib");
     const { URL, URLSearchParams } = nodeRequire("url");
-    const port = 48638;
+    const port = 48639;
     const host = "127.0.0.1:" + port;
     const origin = "http://" + host;
     const home = "https://crackstreams.mx/";
@@ -16,6 +16,7 @@
     const signingKey = crypto.randomBytes(32);
     const textLimit = 4 * 1024 * 1024;
     const mediaLimit = 64 * 1024 * 1024;
+    const liveWindows = new Map();
     let server;
 
     function error(status, message) {
@@ -237,11 +238,38 @@
             .map(path => new URL("https://hdcrackstreams.live/custom-stream/" + path));
     }
 
-    async function resolve(url, signal, load = text) {
+    function staleLiveWindow(url, playlist, now = Date.now()) {
+        if (!/^#EXTINF:/m.test(playlist) || /^#EXT-X-ENDLIST\b/m.test(playlist)) return false;
+        const target = /^#EXT-X-TARGETDURATION:(\d+)/m.exec(playlist);
+        if (!target) return false;
+        // Ignore metadata edits; track the actual live edge and the window's sequence.
+        const edge = playlist.split(/\r?\n/).map(line => line.trim()).filter(line =>
+            line && (line[0] !== "#" || /^#EXT-X-(?:PART:|BYTERANGE:|MEDIA-SEQUENCE:)/.test(line)));
+        const sequence = edge.find(line => line.startsWith("#EXT-X-MEDIA-SEQUENCE:"));
+        const fingerprint = crypto.createHash("sha256").update(JSON.stringify([sequence, edge.slice(-3)])).digest("hex");
+        const key = url.href;
+        const previous = liveWindows.get(key);
+        const entry = previous?.fingerprint === fingerprint ? previous : { fingerprint, since: now };
+        liveWindows.delete(key);
+        liveWindows.set(key, entry);
+        if (liveWindows.size > 32) liveWindows.delete(liveWindows.keys().next().value);
+        return now - entry.since >= Math.max(12000, Number(target[1]) * 3000);
+    }
+
+    async function resolve(url, signal, load = text, avoid = new Set()) {
         const originRef = value => value.origin + "/";
+        let fallback;
+        let stalled = false;
         const check = async (value, referer) => {
             const result = await load(value, signal, referer);
-            return /^#EXTM3U\b/.test(result.text) ? { url: result.url, referer } : null;
+            if (!/^#EXTM3U\b/.test(result.text)) return null;
+            const feed = sign("feed", result.url.href, "");
+            const stream = { url: result.url, referer, feed };
+            const stale = staleLiveWindow(result.url, result.text);
+            if (!avoid.has(feed)) return stream;
+            if (stale) stalled = true;
+            else fallback ||= stream;
+            return null;
         };
         async function fromEmbeds(page, maxDepth, maxPages) {
             const visited = new Set([page.url.href]);
@@ -286,6 +314,8 @@
                 if (playable) return playable;
             } catch (failure) { if (signal.aborted) throw failure; }
         }
+        if (fallback) return fallback;
+        if (stalled) throw error(502, "The live feed stopped updating.");
         throw error(502, "No compatible direct feed was found. Try another link or try again later.");
     }
 
@@ -447,8 +477,9 @@
                 case "/api/play": {
                     const watch = siteURL(source, "/stream/");
                     if (!watch) throw error(400, "Choose a game from the directory.");
-                    const stream = await resolve(watch, signal);
-                    return json(res, 200, { url: relayURL("/stream.m3u8", stream.url, stream.referer) });
+                    const avoid = new Set(route.searchParams.getAll("avoid").slice(0, 2).filter(id => /^[a-f0-9]{64}$/.test(id)));
+                    const stream = await resolve(watch, signal, text, avoid);
+                    return json(res, 200, { url: relayURL("/stream.m3u8", stream.url, stream.referer), feed: stream.feed });
                 }
                 default:
                     return json(res, 404, { error: "Not found" });
@@ -474,7 +505,9 @@
             let bytes = await readBody(response, playlist ? textLimit : mediaLimit);
             if (packed) bytes = unpackSegment(bytes);
             if (bytes.toString("utf8", 0, 7) === "#EXTM3U") {
-                const body = rewrite(bytes.toString("utf8"), base, referer);
+                const manifest = bytes.toString("utf8");
+                staleLiveWindow(base, manifest);
+                const body = rewrite(manifest, base, referer);
                 return send(res, 200, body, "application/vnd.apple.mpegurl", head);
             }
             const type = route.pathname.endsWith(".ts") ? "video/mp2t" : response.headers["content-type"] || "application/octet-stream";
@@ -515,7 +548,7 @@
             hostModule.exports.onStop = () => { if (server) server.close(); server = undefined; };
         } else {
             hostModule.exports = { leagues, games, embeds, playlistIn, webURL, publicAddress, rewrite, sign, slice, eventStart,
-                resolve, unpackSegment };
+                resolve, unpackSegment, staleLiveWindow };
         }
     }
 })(typeof require === "function" ? require : null, typeof module === "object" ? module : null);

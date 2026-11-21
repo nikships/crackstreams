@@ -2,6 +2,8 @@
 
 Use the remote’s arrows and **OK** to pick a sport and game. **Back** returns from video to the same game, or exits the directory. The TV app plays one feed at a time using Samsung AVPlay; four-pane multiview remains a macOS feature.
 
+When playback stalls, the app reconnects and looks for another feed of the same game. If it can’t recover, choose **Retry** or go back to the directory.
+
 Everything runs on the TV. The widget starts its bundled Tizen service, which reads the listings, resolves stream links, and supplies any upstream headers the feeds need. The service only listens on the TV’s loopback address, authenticates app requests, and signs each HLS URL. No other device has to stay on after installation. This client targets Samsung TVs running Tizen 10.
 
 ## Build and sideload
@@ -22,5 +24,5 @@ Everything runs on the TV. The widget starts its bundled Tizen service, which re
 ## Development
 
 - `app/`: Tizen manifest, remote navigation, AVPlay UI, and bundled Node service.
-- `tests/service.test.cjs`: Run `node --test tv/tests/service.test.cjs` to validate directory and embed parsing, signed HLS URLs, and media ranges.
+- Run `node --test tv/tests/*.test.cjs` to validate directory and embed parsing, signed HLS URLs, media ranges, and playback recovery.
 - `tests/preview.mjs`: Local browser preview with sample listings and a fake AVPlay implementation. Run `node tv/tests/preview.mjs` and open `http://127.0.0.1:48634/`. Test decoder behavior and actual video on the TV, not in this preview.

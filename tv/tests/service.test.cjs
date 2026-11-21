@@ -43,7 +43,7 @@ test("TV loopback URLs sign playlists, keys, maps, and nonstandard segments", ()
     assert.deepEqual(urls.map(u => u.pathname), ["/stream.m3u8", "/key.bin", "/init.mp4", "/segment.ts"]);
     for (const url of urls) {
         const params = url.searchParams;
-        assert.equal(url.origin, "http://127.0.0.1:48638");
+        assert.equal(url.origin, "http://127.0.0.1:48639");
         assert.equal(params.get("t"), service.sign(url.pathname, params.get("u"), params.get("r")));
         assert.notEqual(params.get("t"), service.sign("/changed", params.get("u"), params.get("r")));
     }
@@ -104,4 +104,45 @@ test("PNG-wrapped transport packets are unpacked without changing normal media",
     assert.equal(service.unpackSegment(transport), transport);
     const truncated = png.subarray(0, 38);
     assert.equal(service.unpackSegment(truncated), truncated);
+});
+
+test("an unchanged live window expires, but new media or an ended playlist does not", () => {
+    const url = new URL("https://cdn.example/window.m3u8");
+    const original = "#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:2538\n#EXTINF:4,\nsegment-2538.ts\n";
+    assert.equal(service.staleLiveWindow(url, original, 1000), false);
+    assert.equal(service.staleLiveWindow(url, original, 12999), false);
+    assert.equal(service.staleLiveWindow(url, original + "#Metadata changed\n", 13000), true);
+    assert.equal(service.staleLiveWindow(url, original.replaceAll("2538", "2539"), 13001), false);
+    assert.equal(service.staleLiveWindow(url, original + "#EXT-X-ENDLIST\n", 50000), false);
+});
+
+test("recovery switches feeds, rejects the same stale window, and accepts it once it advances", async () => {
+    const watch = new URL("https://crackstreams.mx/stream/red-vs-blue");
+    const primary = "https://cdn.example/recovery.m3u8";
+    const backup = "https://backup.example/recovery.m3u8";
+    let hasBackup = true;
+    let manifest = "#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:2538\n#EXTINF:4,\nsegment-2538.ts\n";
+    const load = async url => {
+        const body = {
+            [watch.href]: '<iframe src="https://player.example/primary"></iframe>'
+                + (hasBackup ? '<iframe src="https://player.example/backup"></iframe>' : ""),
+            "https://player.example/primary": `DIRECT_STREAM_URL = '${primary}';`,
+            "https://player.example/backup": `DIRECT_STREAM_URL = '${backup}';`,
+            [primary]: manifest, [backup]: manifest,
+        };
+        return { url, text: body[url.href] };
+    };
+    const { signal } = new AbortController();
+    const resolve = avoid => service.resolve(watch, signal, load, avoid);
+    service.staleLiveWindow(new URL(primary), manifest, Date.now() - 15000);
+    const first = await resolve();
+    assert.equal(first.url.href, primary);
+    const avoid = new Set([first.feed]);
+    const next = await resolve(avoid);
+    assert.equal(next.url.href, backup);
+    assert.notEqual(first.feed, next.feed);
+    hasBackup = false;
+    await assert.rejects(resolve(avoid), /live feed stopped updating/);
+    manifest = manifest.replaceAll("2538", "2539");
+    assert.equal((await resolve(avoid)).url.href, primary);
 });
