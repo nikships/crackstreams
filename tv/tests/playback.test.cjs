@@ -155,3 +155,32 @@ test("Back aborts an in-flight reconnect and restores focus to the same game", a
     await tv.advance(70000);
     assert.equal(tv.plays.length, 2);
 });
+test("active buffering progress extends refill window and buffer completion clears status", async t => {
+    const tv = await launch(t);
+    tv.emitTime(10000);
+    tv.listeners[0].onbufferingstart();
+    assert.equal(tv.message(), "Buffering…");
+    await tv.advance(5000);
+    tv.listeners[0].onbufferingprogress?.(30);
+    await tv.advance(5000);
+    tv.listeners[0].onbufferingprogress?.(65);
+    await tv.advance(4000);
+    // 14s elapsed since last playtime, but buffer is actively filling so no reconnect fired
+    assert.equal(tv.plays.length, 1);
+    tv.listeners[0].onbufferingcomplete?.();
+    assert.equal(tv.message(), "");
+    tv.emitTime(11000);
+    assert.equal(tv.plays.length, 1);
+});
+
+test("sustained monotonic playback after a PTS discontinuity continues without false reconnect", async t => {
+    const tv = await launch(t);
+    tv.emitTime(120000);
+    // Stream encounters #EXT-X-DISCONTINUITY and PTS resets to 1000ms, then advances normally
+    for (let sec = 1; sec <= 15; sec++) {
+        tv.emitTime(sec * 1000);
+        await tv.advance(1000);
+    }
+    assert.equal(tv.plays.length, 1);
+    assert.equal(tv.message(), "");
+});

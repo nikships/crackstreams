@@ -16,6 +16,7 @@
     const playerStatus = $("playerStatus");
     const keys = { 13: "Enter", 37: "ArrowLeft", 38: "ArrowUp", 39: "ArrowRight", 40: "ArrowDown", 10009: "Back" };
     const stallAfter = 12000;
+    const maxRefillAfter = 25000;
     const healthyAfter = 45000;
     const maxReconnects = 2;
     let league;
@@ -64,7 +65,7 @@
             try { await ping(); return; } catch (_) {}
             try {
                 const { Service } = await import("wrt:service");
-                if (!nativeService) nativeService = new Service("CrackTV001.HLS");
+                if (!nativeService) nativeService = new Service("CrackTV001.Media");
                 // Tizen 10 acknowledges legacy launch calls without actually starting the service.
                 Promise.resolve(nativeService.start()).catch(() => {});
             } catch (_) {
@@ -221,12 +222,42 @@
     function buffering(job) {
         if (!active(job) || !job.playing) return;
         job.healthySince = undefined;
+        job.bufferPercent = undefined;
         if (!playerStatus.textContent) playbackStatus("Buffering…");
     }
 
+    function bufferProgress(job, percent) {
+        if (!active(job) || !Number.isFinite(percent)) return;
+        if (job.bufferPercent === undefined || percent > job.bufferPercent) {
+            job.bufferPercent = percent;
+            job.lastBufferAdvance = performance.now();
+        }
+    }
+
+    function bufferComplete(job) {
+        if (!active(job)) return;
+        job.bufferPercent = undefined;
+        job.lastBufferAdvance = undefined;
+        if (!job.playing) return;
+        job.lastProgress = performance.now();
+        if (playerStatus.textContent === "Buffering…") playbackStatus("");
+    }
+
     function progressed(job, time) {
-        // Replaying time we've already seen is not forward progress.
-        if (!active(job) || !Number.isFinite(time) || time <= job.highWater) return;
+        if (!active(job) || !Number.isFinite(time)) return;
+        if (time <= job.highWater) {
+            // Replaying a short loop is not forward progress, but a sustained monotonic run after a PTS reset is.
+            if (job.rewindLast !== undefined && time === job.rewindLast) return;
+            if (job.rewindLast !== undefined && time > job.rewindLast) {
+                job.rewindLast = time;
+                if (time - job.rewindBase < 8000) return;
+            } else {
+                if (time > 0) job.rewindBase = job.rewindLast = time;
+                return;
+            }
+        }
+        job.rewindBase = job.rewindLast = undefined;
+        job.bufferPercent = job.lastBufferAdvance = undefined;
         job.highWater = time;
         const now = performance.now();
         if (job.healthySince === undefined || now - job.lastProgress >= 4000) job.healthySince = now;
@@ -247,8 +278,12 @@
             if (!active(job)) return;
             try { progressed(job, readTime()); } catch (_) {}
             if (!job.playing) return;
-            const idle = performance.now() - job.lastProgress;
-            if (idle >= stallAfter) interrupted(job, "The feed stopped playing.");
+            const now = performance.now();
+            const idle = now - job.lastProgress;
+            const refilling = job.lastBufferAdvance !== undefined
+                && now - job.lastBufferAdvance < 6000
+                && idle < maxRefillAfter;
+            if (idle >= stallAfter && !refilling) interrupted(job, "The feed stopped playing.");
             else if (idle >= 4000) buffering(job);
         }, 1000);
     }
@@ -259,6 +294,15 @@
         player.hidden = false;
         $("playerTitle").textContent = title;
         startAttempt({ url, trigger, started: false, reconnects: 0, avoid: new Set() });
+    }
+
+    function configureAvPlay() {
+        try { av.setBufferingParam("PLAYER_BUFFER_FOR_PLAY", "PLAYER_BUFFER_SIZE_IN_SECOND", 4); } catch (_) {}
+        try { av.setBufferingParam("PLAYER_BUFFER_FOR_RESUME", "PLAYER_BUFFER_SIZE_IN_SECOND", 6); } catch (_) {}
+        try { av.setTimeoutForBuffering(20); } catch (_) {}
+        try { av.setStreamingProperty("ADAPTIVE_INFO", "STARTBITRATE=AVERAGE|FIXED_MAX_RESOLUTION=1920X1080"); } catch (_) {
+            try { av.setStreamingProperty("ADAPTIVE_INFO", "STARTBITRATE=AVERAGE"); } catch (_) {}
+        }
     }
 
     async function startAttempt(game) {
@@ -278,10 +322,13 @@
             if (!game.started) playbackStatus("Starting playback…");
             if (av) {
                 av.open(source.url);
+                configureAvPlay();
                 av.setDisplayRect(0, 0, 1920, 1080);
                 av.setDisplayMethod("PLAYER_DISPLAY_MODE_LETTER_BOX");
                 av.setListener({
                     onbufferingstart: () => buffering(job),
+                    onbufferingprogress: percent => bufferProgress(job, percent),
+                    onbufferingcomplete: () => bufferComplete(job),
                     oncurrentplaytime: time => progressed(job, time),
                     onstreamcompleted: () => interrupted(job, "The stream ended."),
                     onerror: () => interrupted(job, "The TV couldn’t play this feed. Try again or choose another game.")
@@ -297,6 +344,7 @@
                 previewVideo.ontimeupdate = () => progressed(job, readTime());
                 previewVideo.onerror = () => interrupted(job, "This browser can’t play the feed. Try on the Samsung TV.");
                 previewVideo.onwaiting = () => buffering(job);
+                previewVideo.onplaying = () => bufferComplete(job);
                 previewVideo.onended = () => interrupted(job, "The stream ended.");
                 watchClock(job, readTime);
                 previewVideo.src = source.url;
