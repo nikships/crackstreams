@@ -1,11 +1,12 @@
 name: Release
 
-# Cuts a signed, notarized universal release on every push to main that changes
-# the app, and on manual dispatch. The version is one patch above the newest
+# Cuts a signed, notarized universal macOS release plus Windows (x64/arm64) and
+# Samsung Smart TV (.wgt) packages on every push to main that changes client
+# inputs, and on manual dispatch. The version is one patch above the newest
 # vX.Y.Z tag unless Info.plist or the dispatch input asks for more (see
-# Scripts/next-version.sh). Sparkle drives in-app updates: the release zip is
-# signed with the EdDSA key in SPARKLE_PRIVATE_KEY and listed in appcast.xml on
-# main, which the app polls through SUFeedURL. appcast.xml is not a trigger
+# Scripts/next-version.sh). Sparkle drives macOS in-app updates: the release zip
+# is signed with the EdDSA key in SPARKLE_PRIVATE_KEY and listed in appcast.xml
+# on main, which the app polls through SUFeedURL. appcast.xml is not a trigger
 # path, so the bot's appcast commit never re-runs this workflow.
 #
 # Required repository secrets:
@@ -27,7 +28,12 @@ on:
       - "Info.plist"
       - "Config/**"
       - "Assets/**"
+      - "windows/**"
+      - "!windows/**/*_test.go"
+      - "tv/app/**"
       - "Scripts/build-app.sh"
+      - "Scripts/build-windows.sh"
+      - "Scripts/build-tv.sh"
       - "Scripts/release.sh"
   workflow_dispatch:
     inputs:
@@ -59,6 +65,11 @@ jobs:
           swift --version
           echo "CODESIGN_KEYCHAIN=$RUNNER_TEMP/crackstreams-signing.keychain" >> "$GITHUB_ENV"
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache-dependency-path: windows/go.sum
+
       - name: Import certificate into an isolated signing keychain
         uses: apple-actions/import-codesign-certs@v7
         with:
@@ -86,7 +97,7 @@ jobs:
           echo "build_number=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
           echo "Releasing v$VERSION"
 
-      - name: Build, sign, notarize and staple
+      - name: Build, sign, notarize and staple macOS app
         env:
           VERSION: ${{ steps.version.outputs.version }}
           BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
@@ -95,6 +106,18 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: bash Scripts/release.sh
+
+      - name: Build Windows and Samsung TV packages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          (cd windows && go test -race ./...)
+          bash Scripts/build-windows.sh
+          node --test tv/tests/*.test.cjs
+          bash Scripts/build-tv.sh
+          cp dist/tv/Crackstreams.wgt dist/Crackstreams.wgt
+          (cd dist && shasum -a 256 Crackstreams-Windows-x64.zip Crackstreams-Windows-arm64.zip Crackstreams.wgt >> "Crackstreams-$VERSION-universal-SHA256SUMS.txt")
 
       - name: Sign update for Sparkle
         id: sparkle
@@ -118,6 +141,9 @@ jobs:
           gh release create "v$VERSION" \
             "dist/Crackstreams-$VERSION-universal.dmg" \
             "dist/Crackstreams-$VERSION-universal.zip" \
+            "dist/Crackstreams-Windows-x64.zip" \
+            "dist/Crackstreams-Windows-arm64.zip" \
+            "dist/Crackstreams.wgt" \
             "dist/Crackstreams-$VERSION-universal-SHA256SUMS.txt" \
             --target "$GITHUB_SHA" \
             --title "Crackstreams $VERSION" \

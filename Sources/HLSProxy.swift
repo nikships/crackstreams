@@ -124,21 +124,23 @@ final class HLSProxy: @unchecked Sendable {
         let referer = parameters["r"]
         let range = lines.dropFirst().first { $0.lowercased().hasPrefix("range:") }
             .map { $0.dropFirst("range:".count).trimmingCharacters(in: .whitespaces) }
+        let packed = path.hasSuffix(".ts") && referer == PackedSegment.referer
 
         do {
-            let (data, response) = try await Net.data(
-                upstream, referer: referer, range: range, maximumBytes: Net.maximumSegmentBytes
+            let (body, response) = try await Net.data(
+                upstream, referer: referer, range: packed ? nil : range, maximumBytes: Net.maximumSegmentBytes
             )
             let code = response.statusCode
             guard (200..<300).contains(code) else {
                 return send(connection, status: code, body: Data(), head: method == "HEAD")
             }
             guard !Task.isCancelled else { return connection.cancel() }
+            let data = packed ? PackedSegment.unpack(body) : body
 
             if String(decoding: data.prefix(7), as: UTF8.self) == "#EXTM3U" {
                 guard data.count <= Net.maximumPlaylistBytes else { throw ResolveError.responseTooLarge }
                 let rewritten = rewrite(
-                    playlist: String(decoding: data, as: UTF8.self), base: upstream, referer: referer
+                    playlist: String(decoding: data, as: UTF8.self), base: response.url ?? upstream, referer: referer
                 )
                 return send(connection, status: 200, body: Data(rewritten.utf8),
                             contentType: "application/vnd.apple.mpegurl", head: method == "HEAD")

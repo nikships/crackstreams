@@ -15,9 +15,9 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer || true
       - name: Show toolchain
         run: swift --version
-      - name: Run unit tests
+      - name: Run macOS unit tests
         run: swift test
-      - name: Build app bundle
+      - name: Build macOS app bundle
         run: bash Scripts/build-app.sh
       - uses: actions/setup-go@v5
         with:
@@ -28,5 +28,13 @@ jobs:
         run: go test -race ./...
       - name: Cross-compile Windows packages
         run: bash Scripts/build-windows.sh
+      - name: Validate Samsung TV client
+        run: |
+          node --check tv/app/app.js
+          node --check tv/app/service.js
+          node --check tv/tests/preview.mjs
+          node --test tv/tests/*.test.cjs
+          xmllint --noout tv/app/config.xml
+          bash Scripts/build-tv.sh
       - name: Validate scripts
-        run: bash -n build.sh Scripts/*.sh
+        run: for script in build.sh Scripts/*.sh; do bash -n "$script" || exit; done

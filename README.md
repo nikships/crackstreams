@@ -1,19 +1,20 @@
 <div align="center">
 
-<img src="https://github.com/user-attachments/assets/12a7e709-f315-440e-bf5f-542f46aca727" alt="Crackstreams for macOS — Native 4-Pane HLS Sports Player" width="100%" />
+<img src="https://github.com/user-attachments/assets/12a7e709-f315-440e-bf5f-542f46aca727" alt="Crackstreams — Native HLS Sports Player for macOS, Windows & Samsung Smart TV" width="100%" />
 
-# Crackstreams for macOS
+# Crackstreams
 
-**Watch up to four live HLS sports streams side by side in a native, borderless macOS player.**<br/>
+**Watch live HLS sports streams in native, ad-free players across macOS, Windows, and Samsung Smart TV.**<br/>
 Zero ads. Zero popups. Zero browser overhead.
 
 [![Release](https://img.shields.io/github/v/release/nikships/crackstreams?style=for-the-badge&color=2794E8)](https://github.com/nikships/crackstreams/releases/latest)
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/nikships/crackstreams/releases/latest)
+[![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/nikships/crackstreams/releases/latest)
+[![Samsung Tizen TV](https://img.shields.io/badge/Samsung_TV-Tizen_10-1428A0?style=for-the-badge&logo=samsung&logoColor=white)](#samsung-smart-tv-tizen)
 [![CI](https://img.shields.io/github/actions/workflow/status/nikships/crackstreams/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/nikships/crackstreams/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/nikships/crackstreams?style=for-the-badge&color=1f2937)](https://github.com/nikships/crackstreams/blob/main/LICENSE)
-[![Stars](https://img.shields.io/github/stars/nikships/crackstreams?style=for-the-badge&color=eab308)](https://github.com/nikships/crackstreams/stargazers)
 
-**[Download Universal DMG](https://github.com/nikships/crackstreams/releases/latest)** · [Keyboard Shortcuts](#keyboard-shortcuts) · [Build from Source](#quick-start) · [Architecture](#architecture)
+**[Download Latest Release](https://github.com/nikships/crackstreams/releases/latest)** · [macOS](#macos) · [Windows](#windows-10--11) · [Samsung Smart TV](#samsung-smart-tv-tizen) · [Architecture](#architecture)
 
 <br/>
 
@@ -23,9 +24,11 @@ Zero ads. Zero popups. Zero browser overhead.
 
 ## What is this?
 
-Crackstreams is a native SwiftUI and `AVPlayer` client for macOS 14+ that resolves watch pages and direct `.m3u8` playlists into up to four simultaneous live video panes. It strips away browser tabs, ad overlays, fake player prompts, and chat sidebars by resolving the underlying HLS feed and playing it through a token-protected loopback relay.
+Crackstreams is a multi-platform suite of native sports stream players for **macOS**, **Windows 10/11**, and **Samsung Smart TV (Tizen 10)**. Each client resolves watch pages and direct `.m3u8` playlists into clean HLS feeds played through a token-protected `127.0.0.1` loopback relay—stripping away ad overlays, popups, fake player prompts, and chat sidebars.
 
-Pick games from the built-in Live Sports Directory (`⌘B`), drag a URL onto any pane, or paste a stream link into the Add Stream palette (`⌘L`). No browser, streamlink, or mpv installation is required.
+- **macOS (`Sources/`)**: Native SwiftUI + `AVPlayer` 4-pane borderless multiview player, Developer ID notarized with Sparkle auto-updates.
+- **Windows (`windows/`)**: Standalone single-executable (`Crackstreams.exe`) 4-pane player built in pure Go + Edge WebView2 with zero external runtime dependencies.
+- **Samsung Smart TV (`tv/`)**: Standalone Tizen 10 TV widget + bundled on-TV Node HLS relay service driven by the TV remote and hardware `AVPlay`—no Mac or PC needs to stay on.
 
 <div align="center">
   <img src="https://github.com/user-attachments/assets/418aebe3-e22d-484a-8c64-a2ffbee4c8b2" alt="Cluttered browser streaming versus Crackstreams native four-pane macOS player" width="900" />
@@ -33,15 +36,14 @@ Pick games from the built-in Live Sports Directory (`⌘B`), drag a URL onto any
 
 ## Features
 
-- **Borderless MPV-style window**: Runs edge-to-edge without a gray system title bar. Each pane shows its own controls along its top edge on hover or keyboard focus, a small dock at the bottom switches panes and adds streams, and everything auto-hides during idle playback. Drag the window by any background or video surface.
-- **Four-pane multiview**: Run 1 to 4 independent `AVPlayer` feeds simultaneously, expand any pane full-window (`⌘1`–`⌘4`), take one pane full screen with its full-screen button or a double-click on the video, or jump back to the 2×2 grid (`⌘0` or `Esc`).
-- **Smart audio & one-click solo**: Pane 1 starts audible while additional panes start muted. Click a muted pane's speaker (or press `⌥⌘1`–`⌥⌘4`) to switch the sound to that game, or Option-click it to mix it with what is already playing. Audible panes get a per-pane volume slider.
-- **Built-in Live Sports Directory (`⌘B`)**: Browse live, starting-soon, and 24/7 listings from `crackstreams.mx` with start times converted to your local time zone. Only same-site `/league/` and `/stream/` links are shown.
-- **Add Stream palette & drag-and-drop (`⌘L`)**: Open the palette with `⌘L` or the dock's Add button, drop a link onto any pane to play or replace it, or paste straight from the clipboard.
-- **Resilient & secure playback**: Temporary stalls display a non-destructive `Reconnecting…` pill instead of tearing down the player, and failures include an inline retry. Upstream `Referer` headers and playlist rewriting run inside a loopback-only relay gated by a random per-launch token and `Host` validation.
-- **Universal & auto-updating**: Ships as a signed, notarized Apple silicon + Intel DMG with Sparkle EdDSA in-app updates.
+- **Borderless MPV-style window (macOS & Windows)**: Runs edge-to-edge without chrome clutter. Each pane reveals controls on hover or keyboard focus, a bottom dock switches panes and adds streams, and controls auto-hide during idle playback.
+- **Four-pane multiview**: Run 1 to 4 independent feeds simultaneously on desktop, expand any pane full-window (`⌘1`–`⌘4` / `Alt+1`–`Alt+4`), double-click for full screen, or return to the 2×2 grid (`⌘0` / `Esc`).
+- **Smart audio & one-click solo**: Pane 1 starts audible while additional panes start muted. Click a muted pane's speaker to switch sound to that game, or Option-click to mix audio across panes.
+- **Built-in Live Sports Directory**: Browse live, starting-soon, and 24/7 listings from `crackstreams.mx` with start times in your local time zone. Only same-site `/league/` and `/stream/` links are shown.
+- **Standalone Samsung TV experience**: Navigate sports and live games with the TV remote's D-pad; streams stream directly through the TV's local loopback service with adaptive bitrate and live discontinuity recovery.
+- **Resilient & secure playback**: Upstream `Referer` injection, segment unwrapping, and playlist rewriting run inside a loopback-only (`127.0.0.1`) relay gated by an unguessable per-launch token and `Host` validation.
 
-## Keyboard Shortcuts
+## Keyboard Shortcuts (macOS)
 
 | Shortcut | Action |
 |---|---|
@@ -54,15 +56,13 @@ Pick games from the built-in Live Sports Directory (`⌘B`), drag a URL onto any
 
 ## Quick Start
 
-### Install the App (Recommended)
+### macOS
 
-1. Download the universal, notarized `.dmg` from the [Latest Release](https://github.com/nikships/crackstreams/releases/latest).
-2. Open the disk image and drag **Crackstreams** into **Applications** (requires macOS 14 or later on Apple silicon or Intel).
-3. Launch **Crackstreams**. Future updates arrive automatically via **Crackstreams › Check for Updates…** (Sparkle).
+1. Download `Crackstreams-<version>-universal.dmg` from the [Latest Release](https://github.com/nikships/crackstreams/releases/latest).
+2. Open the disk image and drag **Crackstreams** into **Applications** (macOS 14+ on Apple silicon or Intel).
+3. Future updates arrive automatically via **Crackstreams › Check for Updates…** (Sparkle).
 
-### Build from Source
-
-Requires macOS 14+ and a Swift 6 toolchain. [Sparkle](https://sparkle-project.org) is the only package dependency and is fetched automatically by SwiftPM.
+To build from source (macOS 14+, Swift 6):
 
 ```bash
 git clone https://github.com/nikships/crackstreams.git
@@ -71,140 +71,92 @@ swift test
 ./build.sh --install
 ```
 
-`./build.sh --install` builds `dist/Crackstreams.app`, embeds `Sparkle.framework`, applies ad-hoc signing for local development, and installs it to `~/Applications/Crackstreams.app`.
-
 ### Windows (10 / 11)
 
-A standalone, zero-dependency Windows version lives in [`windows/`](windows) and cross-compiles directly from macOS (or Linux/Windows) with Go:
+1. Download `Crackstreams-Windows-x64.zip` (or `Crackstreams-Windows-arm64.zip`) from the [Latest Release](https://github.com/nikships/crackstreams/releases/latest).
+2. Extract and double-click **`Crackstreams.exe`**—no installer or extra runtime needed on Windows 10/11.
+
+To test and cross-compile from source (Go 1.23+):
 
 ```bash
-(cd windows && go test ./...)
+(cd windows && go test -race ./...)
 bash Scripts/build-windows.sh
 ```
 
-Produces `dist/Crackstreams-Windows-x64.zip` (single self-contained `Crackstreams.exe` using Windows 10/11's built-in Edge WebView2 runtime, embedded `hls.js`, and the same token-protected loopback HLS proxy and Live Sports Directory).
+### Samsung Smart TV (Tizen)
+
+[`tv/`](tv) contains a standalone Tizen 10 widget (`Crackstreams.wgt`, also attached to each [GitHub Release](https://github.com/nikships/crackstreams/releases/latest)) with a remote-friendly live sports directory and hardware `AVPlay` playback. Everything runs directly on the TV without keeping a computer on.
+
+```bash
+node --test tv/tests/*.test.cjs
+bash Scripts/build-tv.sh
+```
+
+See [`tv/README.md`](tv/README.md) for Partner certificate signing and sideloading onto your TV.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    UI["ContentView + WindowChrome<br/>Borderless 4-pane grid & chrome"]
-    Browser["BrowserView + StreamDirectory<br/>Same-site league & game listings"]
-    Store["StreamStore<br/>4 independent AVPlayer slots"]
-    Resolver["Resolver<br/>Watch page -> .m3u8 + Referer"]
-    Proxy["HLSProxy (127.0.0.1)<br/>Token-gated loopback relay"]
-    AV["AVPlayer<br/>Native hardware playback"]
+    UI["Client UI<br/>macOS SwiftUI · Windows WebView2 · Tizen TV"]
+    Directory["StreamDirectory<br/>Same-site /league/ & /stream/ listings"]
+    Resolver["Resolver<br/>Watch page & embed -> .m3u8 + Referer"]
+    Proxy["Loopback HLS Relay (127.0.0.1)<br/>Token + Host gated · segment unwrap"]
+    Player["Native Player<br/>AVPlayer · hls.js · Samsung AVPlay"]
 
-    Browser -->|watch URL| Store
-    UI -->|URL / drop / paste| Store
-    Store -->|resolve| Resolver
-    Resolver -->|playlist + Referer| Store
-    Store -->|loopback URL| AV
-    AV <-->|rewritten playlists & segments| Proxy
+    Directory -->|watch URL| Resolver
+    UI -->|URL / selection| Resolver
+    Resolver -->|playlist + Referer| Proxy
+    Player <-->|rewritten playlists & segments| Proxy
 ```
-
-- `Sources/StreamDirectory.swift`: Fetches and parses league and event listings, limiting results to same-site `/league/` and `/stream/` links and dropping stale responses when switching leagues.
-- `Sources/Resolver.swift`: Extracts embeds and validates HTTP(S) HLS playlists with bounded payload sizes and task cancellation.
-- `Sources/HLSProxy.swift`: Loopback-only HTTP relay on `127.0.0.1` that injects upstream `Referer` headers, supports byte ranges, and rewrites playlists, keys, and segments to local URLs protected by a per-launch token and `Host` check.
-- `Sources/StreamStore.swift`: Manages four independent `AVPlayer` slots with generation guards, mute/solo state, buffering indicators, and inline retry.
-- `Sources/ContentView.swift` & `Sources/PlayerView.swift`: Render the borderless 2×2 grid, per-pane hover/focus controls, the multiview dock, the Add Stream palette, and drag-and-drop targets.
-- `Sources/WindowChrome.swift`: Configures the chromeless `NSWindow`, hover-only traffic lights, idle cursor auto-hide, video-surface window dragging, and double-click-to-full-screen.
-- `Sources/BrowserView.swift`: Renders the Live Sports Directory modal sheet.
-- `Sources/Updater.swift`: Integrates Sparkle automatic updates (disabled in debug builds).
 
 ## Project Structure
 
 ```text
 crackstreams/
-├── .github/
-│   └── workflows/
-│       ├── ci.yml
-│       └── release.yml
-├── Assets/
-│   ├── AppIcon.iconset/
-│   ├── AppIcon.icns
-│   └── AppIcon.png
+├── .github/workflows/
+│   ├── ci.yml                  # macOS, Windows, and Samsung TV CI
+│   └── release.yml             # Notarized macOS + Windows + TV release publisher
+├── Assets/                     # App icons
 ├── Config/
-│   └── Entitlements.plist
+│   └── Entitlements.plist      # macOS App Sandbox & Sparkle entitlements
 ├── Scripts/
-│   ├── build-app.sh
-│   ├── next-version.sh
-│   ├── release.sh
-│   └── update-appcast.sh
-├── Sources/
-│   ├── BrowserView.swift
-│   ├── ContentView.swift
-│   ├── CrackstreamsApp.swift
-│   ├── HLSProxy.swift
-│   ├── PlayerView.swift
-│   ├── Resolver.swift
-│   ├── StreamDirectory.swift
-│   ├── StreamStore.swift
-│   ├── Updater.swift
-│   └── WindowChrome.swift
-├── Tests/
-│   ├── HLSProxyTests.swift
-│   ├── ReleaseConfigurationTests.swift
-│   ├── ResolverTests.swift
-│   ├── StreamDirectoryTests.swift
-│   ├── StreamStoreTests.swift
-│   └── WindowChromeTests.swift
+│   ├── build-app.sh            # Builds macOS Crackstreams.app
+│   ├── build-tv.sh             # Packages Samsung TV Crackstreams.wgt
+│   ├── build-windows.sh        # Cross-compiles Windows x64 & arm64 ZIPs
+│   ├── next-version.sh         # Computes next semantic release version
+│   ├── release.sh              # Signs, notarizes, and staples macOS artifacts
+│   └── update-appcast.sh       # Updates Sparkle appcast.xml
+├── Sources/                    # macOS SwiftUI + AVPlayer client
+├── Tests/                      # macOS XCTest suite
+├── tv/                         # Samsung Smart TV (Tizen 10) standalone client
+│   ├── app/                    # Widget UI, AVPlay controller, loopback Node service
+│   ├── tests/                  # Node unit tests & local preview harness
+│   └── README.md               # Samsung TV signing & sideloading guide
+├── windows/                    # Windows 10/11 Go + WebView2 standalone client
+│   ├── cmd/crackstreams/       # Single-binary entrypoints & embedded icon resources
+│   ├── internal/               # Directory, resolver, loopback HLS proxy, HTTP server
+│   └── web/                    # Embedded 4-pane multiview UI
 ├── AGENTS.md
 ├── Info.plist
-├── LICENSE
-├── Package.resolved
 ├── Package.swift
-├── README.md
 ├── appcast.xml
 └── build.sh
 ```
 
-## Documentation
-
-| Resource | Description |
-|---|---|
-| [AGENTS.md](AGENTS.md) | Playback invariants, development commands, and live validation checklist |
-| [Package.swift](Package.swift) | SwiftPM manifest and Sparkle dependency |
-| [Info.plist](Info.plist) | Bundle configuration, macOS 14 minimum, and Sparkle EdDSA feed keys |
-| [Config/Entitlements.plist](Config/Entitlements.plist) | App Sandbox and Sparkle XPC mach-lookup entitlements |
-| [.github/workflows/ci.yml](.github/workflows/ci.yml) | Automated unit tests, app bundle build, and shell script checks |
-| [.github/workflows/release.yml](.github/workflows/release.yml) | Universal Developer ID signing, notarization, DMG publishing, and appcast updates |
-| [Scripts/release.sh](Scripts/release.sh) | Reproducible local release, notarization, and stapling script |
-
-<details>
-<summary><strong>Releases &amp; Code Signing Pipeline</strong></summary>
-
-Every push to `main` touching app inputs (`Sources/`, `Package.swift`, `Package.resolved`, `Info.plist`, `Config/`, `Assets/`, `Scripts/build-app.sh`, or `Scripts/release.sh`) runs `.github/workflows/release.yml`:
-
-1. Computes the next semantic version via `Scripts/next-version.sh` (one patch above the newest `vX.Y.Z` tag, or `CFBundleShortVersionString` in `Info.plist` if higher) with commit count as `CFBundleVersion`.
-2. Runs `Scripts/release.sh` using an isolated keychain: unit tests, universal binary build, Developer ID signing with App Sandbox and hardened runtime, notarization, stapling, and `spctl` verification.
-3. Signs the release ZIP with `SPARKLE_PRIVATE_KEY` (EdDSA) and publishes the DMG, ZIP, and checksums to GitHub Releases.
-4. Verifies the published DMG download and commits the updated `appcast.xml` to `main`.
-
-Required GitHub Actions secrets: `APPLE_DEVELOPER_CERTIFICATE_P12_BASE64`, `APPLE_DEVELOPER_CERTIFICATE_PASSWORD`, `APPLE_DEVELOPER_ID_APPLICATION`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`, and `SPARKLE_PRIVATE_KEY` (matching `SUPublicEDKey` in `Info.plist`).
-
-To run the release pipeline locally (without publishing):
-
-```bash
-VERSION="$(bash Scripts/next-version.sh)" \
-BUILD_NUMBER="$(git rev-list --count HEAD)" \
-SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-APPLE_ID="you@example.com" \
-APPLE_PASSWORD="app-specific-password" \
-APPLE_TEAM_ID="TEAMID" \
-bash Scripts/release.sh
-```
-
-</details>
-
 ## Contributing
 
-Contributions are welcome. Before opening a pull request, run the CI verification suite locally:
+Before opening a pull request, run the full monorepo CI verification suite locally:
 
 ```bash
 swift test
 bash Scripts/build-app.sh
-bash -n build.sh Scripts/*.sh
+(cd windows && go test -race ./...)
+bash Scripts/build-windows.sh
+node --test tv/tests/*.test.cjs
+xmllint --noout tv/app/config.xml
+bash Scripts/build-tv.sh
+for script in build.sh Scripts/*.sh; do bash -n "$script" || exit; done
 ```
 
 <a href="https://github.com/nikships/crackstreams/graphs/contributors">
