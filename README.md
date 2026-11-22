@@ -73,6 +73,17 @@ swift test
 
 `./build.sh --install` builds `dist/Crackstreams.app`, embeds `Sparkle.framework`, applies ad-hoc signing for local development, and installs it to `~/Applications/Crackstreams.app`.
 
+### Windows (10 / 11)
+
+A standalone, zero-dependency Windows version lives in [`windows/`](windows) and cross-compiles directly from macOS (or Linux/Windows) with Go:
+
+```bash
+(cd windows && go test ./...)
+bash Scripts/build-windows.sh
+```
+
+Produces `dist/Crackstreams-Windows-x64.zip` (single self-contained `Crackstreams.exe` using Windows 10/11's built-in Edge WebView2 runtime, embedded `hls.js`, and the same token-protected loopback HLS proxy and Live Sports Directory).
+
 ## Architecture
 
 ```mermaid

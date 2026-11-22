@@ -5,6 +5,7 @@ dist/
 *.png
 *.jpg
 !Assets/**/*.png
+!windows/web/*.png
 .env
 *.keychain
 *.keychain-db

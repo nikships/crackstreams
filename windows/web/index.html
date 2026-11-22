@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crackstreams</title>
+  <link rel="icon" type="image/png" href="/icon.png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <!--__CS_BOOT__-->
+</head>
+<body>
+  <div id="app" class="app mode-launch">
+    <!-- Launch Header (shown when all 4 panes are empty) -->
+    <header id="launchHeader" class="launch-header">
+      <div class="launch-topbar">
+        <div class="brand-group">
+          <img src="/icon.png" alt="" class="brand-icon" width="24" height="24" />
+          <span class="brand-name">Crackstreams</span>
+          <span class="brand-tag">4-Pane Multiview</span>
+        </div>
+        <div class="launch-actions">
+          <button id="pinShortcutBtn" class="ghost-pill hidden" type="button" title="Add Crackstreams shortcut to Desktop and Start Menu">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9.5 2.5l4 4-2 2-.5 3.5-3-3-4.5 4.5M6.5 9.5l-2-2 3.5-.5 1.5-4.5z"/>
+            </svg>
+            <span>Add Desktop Shortcut</span>
+          </button>
+          <button id="launchBrowseBtn" class="live-games-btn" type="button" title="Browse live sports and games (Ctrl+B)">
+            <span class="live-dot"></span>
+            <span>Browse Live Games</span>
+            <kbd>Ctrl+B</kbd>
+          </button>
+        </div>
+      </div>
+
+      <form id="launchUrlForm" class="url-bar" autocomplete="off">
+        <svg class="url-link-icon" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6.8 9.2a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2L7.7 4.1"/>
+          <path d="M9.2 6.8a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l1.1-1.1"/>
+        </svg>
+        <input
+          id="launchUrlInput"
+          type="text"
+          spellcheck="false"
+          placeholder="Paste a stream page or .m3u8 link, or click Browse Live Games"
+          aria-label="Stream URL"
+        />
+        <button id="launchClearBtn" class="icon-clear hidden" type="button" aria-label="Clear URL" title="Clear">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+            <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zm2.47 4.03a.75.75 0 0 1 0 1.06L9.06 8l1.41 1.41a.75.75 0 1 1-1.06 1.06L8 9.06l-1.41 1.41a.75.75 0 0 1-1.06-1.06L6.94 8 5.53 6.59a.75.75 0 0 1 1.06-1.06L8 6.94l1.41-1.41a.75.75 0 0 1 1.06 0z"/>
+          </svg>
+        </button>
+        <button id="launchPasteBtn" class="paste-inline-btn" type="button" title="Paste URL from clipboard">Paste</button>
+        <button id="launchPlayBtn" class="play-submit-btn" type="submit" disabled>
+          <span>Play</span>
+          <span class="enter-glyph">↵</span>
+        </button>
+      </form>
+    </header>
+
+    <!-- 4-Pane Multiview Grid -->
+    <main id="gridStage" class="grid-stage"></main>
+
+    <!-- Launch Footer -->
+    <footer id="launchFooter" class="launch-footer">
+      <div id="launchHints" class="footer-hints">
+        <span class="hint-item"><kbd>Ctrl+B</kbd> Live games</span>
+        <span class="hint-item"><kbd>Ctrl+L</kbd> Add link</span>
+        <span class="hint-item"><kbd>Ctrl+1–4</kbd> Expand pane</span>
+        <span class="hint-item"><kbd>Alt+1–4</kbd> Switch audio</span>
+        <span class="hint-text">Double-click video or press <kbd>F11</kbd> for full screen</span>
+      </div>
+      <div id="launchWarning" class="inline-warning hidden" role="status">
+        <span class="warn-icon">⚠</span>
+        <span id="launchWarningText"></span>
+        <button id="launchWarningDismiss" type="button" aria-label="Dismiss message">✕</button>
+      </div>
+      <div class="footer-badge">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+          <path d="M8 1l6 2.5v4.2c0 3.7-2.5 6.8-6 7.8-3.5-1-6-4.1-6-7.8V3.5L8 1z"/>
+        </svg>
+        <span>Direct HLS · Zero ads or popups</span>
+      </div>
+    </footer>
+
+    <!-- Floating Toast / Message Banner in Immersive Mode -->
+    <div id="immersiveBanner" class="immersive-banner hidden" role="status">
+      <span id="immersiveBannerIcon" class="warn-icon">⚠</span>
+      <span id="immersiveBannerText"></span>
+      <button id="immersiveBannerDismiss" type="button" aria-label="Dismiss">✕</button>
+    </div>
+
+    <!-- Bottom Multiview Dock (Immersive Mode) -->
+    <nav id="multiviewDock" class="multiview-dock hidden" aria-label="Multiview controls">
+      <div class="dock-panes">
+        <button id="dockGridBtn" class="dock-icon-btn active" type="button" title="Show all 4 panes (Ctrl+0)">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+            <rect x="2" y="2" width="5" height="5" rx="1.2"/>
+            <rect x="9" y="2" width="5" height="5" rx="1.2"/>
+            <rect x="2" y="9" width="5" height="5" rx="1.2"/>
+            <rect x="9" y="9" width="5" height="5" rx="1.2"/>
+          </svg>
+        </button>
+        <div id="dockChips" class="dock-chips"></div>
+      </div>
+      <div class="dock-divider"></div>
+      <button id="dockAddBtn" class="dock-text-btn" type="button" title="Add stream URL (Ctrl+L)">
+        <span class="plus-accent">+</span>
+        <span>Add</span>
+      </button>
+      <button id="dockBrowseBtn" class="dock-text-btn" type="button" title="Browse live games (Ctrl+B)">
+        <span class="live-dot small"></span>
+        <span>Live games</span>
+      </button>
+    </nav>
+
+    <!-- Add Stream Command Palette (Ctrl+L) -->
+    <div id="paletteBackdrop" class="modal-backdrop palette-backdrop hidden">
+      <div class="palette-card" role="dialog" aria-modal="true" aria-label="Add stream">
+        <div class="palette-header">
+          <span class="palette-label">ADD STREAM</span>
+          <span class="palette-esc"><kbd>Esc</kbd> to close</span>
+        </div>
+        <form id="paletteUrlForm" class="url-bar palette-url-bar" autocomplete="off">
+          <svg class="url-link-icon" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6.8 9.2a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2L7.7 4.1"/>
+            <path d="M9.2 6.8a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l1.1-1.1"/>
+          </svg>
+          <input
+            id="paletteUrlInput"
+            type="text"
+            spellcheck="false"
+            placeholder="Paste a watch page or .m3u8 link"
+            aria-label="Stream URL"
+          />
+          <button id="paletteClearBtn" class="icon-clear hidden" type="button" aria-label="Clear URL">✕</button>
+          <button id="palettePlayBtn" class="play-submit-btn" type="submit" disabled>
+            <span>Play</span>
+            <span class="enter-glyph">↵</span>
+          </button>
+        </form>
+        <div class="palette-meta">
+          <div class="palette-dest">
+            <span id="paletteDestDot" class="dest-dot"></span>
+            <span id="paletteDestText">Plays in Pane 1 with sound</span>
+          </div>
+          <div class="palette-quick-actions">
+            <button id="palettePasteBtn" class="pill-btn" type="button">Paste clipboard</button>
+            <button id="paletteBrowseBtn" class="pill-btn accent" type="button">
+              <span class="live-dot small"></span>
+              <span>Live games</span>
+            </button>
+          </div>
+        </div>
+        <div id="paletteError" class="palette-error hidden"></div>
+      </div>
+    </div>
+
+    <!-- Live Sports Directory Modal (Ctrl+B) -->
+    <div id="directoryBackdrop" class="modal-backdrop directory-backdrop hidden">
+      <div class="directory-sheet" role="dialog" aria-modal="true" aria-label="Live Sports Directory">
+        <header class="directory-header">
+          <div class="dir-title-group">
+            <div class="dir-brand-box">
+              <img src="/icon.png" alt="" width="22" height="22" />
+            </div>
+            <div>
+              <div class="dir-title-row">
+                <h2>Live Sports Directory</h2>
+                <span id="dirLiveCount" class="dir-live-badge hidden"></span>
+              </div>
+              <div class="dir-subtitle-row">
+                <span id="dirHostLabel">crackstreams.mx</span>
+                <span class="sep">·</span>
+                <span id="dirDestBadge" class="dir-dest-pill">Plays in next free pane</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="dir-controls">
+            <div class="dir-search">
+              <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6">
+                <circle cx="7" cy="7" r="4.8"/>
+                <path d="M10.6 10.6L14 14" stroke-linecap="round"/>
+              </svg>
+              <input id="dirFilterInput" type="text" placeholder="Filter teams or games…" aria-label="Filter games" />
+              <button id="dirFilterClear" class="icon-clear hidden" type="button" aria-label="Clear filter">✕</button>
+            </div>
+            <button id="dirRefreshBtn" class="dir-icon-btn" type="button" title="Refresh listings (Ctrl+R)">
+              <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13.5 8a5.5 5.5 0 1 1-1.4-3.7"/>
+                <path d="M13.5 2.5v2.8h-2.8"/>
+              </svg>
+            </button>
+            <button id="dirCloseBtn" class="dir-done-btn" type="button">Done</button>
+          </div>
+        </header>
+
+        <div class="directory-body">
+          <aside id="dirSidebar" class="dir-sidebar" aria-label="Sports"></aside>
+          <section id="dirEventsPane" class="dir-events" aria-label="Games"></section>
+        </div>
+
+        <footer class="directory-footer">
+          <span id="dirFooterStatus" class="dir-footer-hint">Click Watch or double-click any matchup. Streams typically go live up to 60 minutes before kickoff.</span>
+        </footer>
+      </div>
+    </div>
+  </div>
+
+  <script src="/vendor/hls.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

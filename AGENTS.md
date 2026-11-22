@@ -2,7 +2,7 @@
 
 ## Scope
 
-Native SwiftUI macOS app that resolves watch pages into HLS feeds and plays up to four streams with AVPlayer. SwiftPM builds one executable; `Scripts/build-app.sh` assembles the `.app` and embeds Sparkle.framework. Sparkle is the only package dependency. There is no Xcode project, development server, or hot reload.
+Native SwiftUI macOS app that resolves watch pages into HLS feeds and plays up to four streams with AVPlayer, plus a standalone single-executable Windows 10/11 client under `windows/` built in pure Go + WebView2. SwiftPM builds the macOS executable; `Scripts/build-app.sh` assembles the `.app` and embeds Sparkle.framework. `Scripts/build-windows.sh` cross-compiles `dist/Crackstreams-Windows-x64.zip` and `dist/Crackstreams-Windows-arm64.zip` (`CGO_ENABLED=0`).
 
 The README covers installation and release credentials. Read it before publishing. Use the source files directly for implementation details.
 
@@ -24,6 +24,8 @@ Before a pull request, reproduce CI:
 ```bash
 swift test
 bash Scripts/build-app.sh
+(cd windows && go test -race ./...)
+bash Scripts/build-windows.sh
 bash -n build.sh Scripts/*.sh
 ```
 
